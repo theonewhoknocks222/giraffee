@@ -1,0 +1,2072 @@
+--// Load Library
+local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
+local Library = loadstring(game:HttpGet(repo.."Library.lua"))()
+local ThemeManager = loadstring(game:HttpGet(repo.."addons/ThemeManager.lua"))()
+local SaveManager = loadstring(game:HttpGet(repo.."addons/SaveManager.lua"))()
+local Options, Toggles = Library.Options, Library.Toggles
+Library.ForceCheckbox = false
+Library.ShowToggleFrameInKeybinds = true
+
+local Window = Library:CreateWindow({Title="Lustra | Pressure",Footer="v1.0.0",Center=true,AutoShow=true})
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ProximityPromptService = game:GetService("ProximityPromptService")
+local UserInputService = game:GetService("UserInputService")
+local LP = Players.LocalPlayer
+local Connections = {}
+local _Flags = {FlyActive=false, HideActive=false}
+
+local function trackConnection(n, c) if Connections[n] then Connections[n]:Disconnect() end Connections[n] = c end
+local function removeConnection(n) if Connections[n] then Connections[n]:Disconnect(); Connections[n] = nil end end
+
+local Tabs = {
+    Main     = Window:AddTab("Main",            "star"),
+    ESP      = Window:AddTab("ESP",             "eye"),
+    Removal  = Window:AddTab("Remove Entities", "trash"),
+    Gameplay = Window:AddTab("Gameplay",        "zap"),
+    UI       = Window:AddTab("UI",              "settings"),
+}
+
+--// Name Maps
+local EntityNames = {A60="A-60",Angler="Angler",Blitz="Blitz",Baldi="Baldi",Bouncer="Bouncer",BiggerStatue="BiggerStatue",Chainsmoker="Chainsmoker",DiVine="DiVine",Eyefestation="Eyefestation",Froger="Froger",FishBody="Fish",Harbinger="Death Angel",Pinkie="Pinkie",Pandemonium="Pandemonium",Parasite="Parasite",Pipsqueak="Pipsqueak",RottenWallDweller="RottenWallDweller",RidgeAngler="Angler",RidgeBlitz="Blitz",RidgeChainsmoker="Chainsmoker",RidgeFroger="Froger",RidgePinkie="Pinkie",SkeletonHead="SkeletonHead",StatueRoot="Statue",WallDweller="WallDweller",Abomination="Abomination",
+    Bottomfeeder="Bottomfeeder",BottomFeeder="Bottomfeeder",Bottom_Feeder="Bottomfeeder",
+    GoodPeople="GoodPeople",Goodpeople="GoodPeople",Good_People="GoodPeople",
+    Rebarb="Rebarb",Rebar="Rebarb",Stan="Stan",Stan_NPC="Stan",
+    Dozer="Dozer",DOZER="Dozer",
+    Candlebearer="Candlebearer",CandleBearer="Candlebearer",Candle_Bearer="Candlebearer",CandleCarrier="Candlebearer",
+    Carnation="Carnation",CARNATION="Carnation",
+    A200="A-200",
+    Bleach="Bleach",
+    Elkman="Elkman",
+    Doppel="Doppel",Doppelganger="Doppel",
+    Gom="Gom",
+    Conundrum="Conundrum",
+    Anglemonium="Anglemonium",
+    Frogermonium="Frogermonium",
+    Pinkimonium="Pinkimonium",
+    Pandesmoker="Pandesmoker",
+    Blitzemonium="Blitzemonium"}
+local EntityNotifyNames = {A60="A-60",Angler="Angler",Blitz="Blitz",Baldi="Baldi",BiggerStatue="BiggerStatue",Chainsmoker="Chainsmoker",Eyefestation="Eyefestation",Froger="Froger",FishBody="Fish",Harbinger="Death Angel",Pinkie="Pinkie",Pandemonium="Pandemonium",Parasite="Parasite",Pipsqueak="Pipsqueak",RottenWallDweller="RottenWallDweller",RidgeAngler="Angler",RidgeBlitz="Blitz",RidgeChainsmoker="Chainsmoker",RidgeFroger="Froger",RidgePinkie="Pinkie",SkeletonHead="SkeletonHead",StatueRoot="Statue",WallDweller="WallDweller",
+    Bottomfeeder="Bottomfeeder",BottomFeeder="Bottomfeeder",Bottom_Feeder="Bottomfeeder",
+    GoodPeople="GoodPeople",Goodpeople="GoodPeople",Good_People="GoodPeople",
+    Rebarb="Rebarb",Rebar="Rebarb",Stan="Stan",Stan_NPC="Stan",
+    Dozer="Dozer",DOZER="Dozer",
+    Candlebearer="Candlebearer",CandleBearer="Candlebearer",Candle_Bearer="Candlebearer",CandleCarrier="Candlebearer",
+    Carnation="Carnation",CARNATION="Carnation",
+    A200="A-200",
+    Bleach="Bleach",
+    Elkman="Elkman",
+    Doppel="Doppel",Doppelganger="Doppel",
+    Gom="Gom",
+    Conundrum="Conundrum",
+    Anglemonium="Anglemonium",
+    Frogermonium="Frogermonium",
+    Pinkimonium="Pinkimonium",
+    Pandesmoker="Pandesmoker",
+    Blitzemonium="Blitzemonium"}
+local AutoHideEntities = {A60="A-60",Angler="Angler",Blitz="Blitz",Froger="Froger",Pinkie="Pinkie",Chainsmoker="Chainsmoker",Pandemonium="Pandemonium",RidgeAngler="Angler",RidgeBlitz="Blitz",RidgeChainsmoker="Chainsmoker",RidgeFroger="Froger",RidgePinkie="Pinkie",Carnation="Carnation",CARNATION="Carnation",A200="A-200",Bleach="Bleach",Anglemonium="Anglemonium",Frogermonium="Frogermonium",Pinkimonium="Pinkimonium",Pandesmoker="Pandesmoker",Blitzemonium="Blitzemonium",Doppel="Doppel",Doppelganger="Doppel"}
+
+-- Fuzzy notify patterns for new entities whose exact in-game name is uncertain.
+local FuzzyNotifyPatterns = {
+    {pattern="bottomfeeder", label="Bottomfeeder"},
+    {pattern="goodpeople",   label="GoodPeople"},
+    {pattern="rebarb",       label="Rebarb"},
+    {pattern="rebar",        label="Rebarb"},
+    {pattern="^stan$",       label="Stan"},
+    {pattern="^stan_",       label="Stan"},
+    {pattern="^witch$",      label="The Witch"},
+    {pattern="^dozer$",       label="Dozer"},
+    {pattern="^dozer_",       label="Dozer"},
+    {pattern="candlebearer",  label="Candlebearer"},
+    {pattern="candlecarrier", label="Candlebearer"},
+    {pattern="^carnation$",   label="Carnation"},
+    {pattern="^carnation_",   label="Carnation"},
+    {pattern="^a200$",        label="A-200"},
+    {pattern="^a-200$",       label="A-200"},
+    {pattern="^bleach$",      label="Bleach"},
+    {pattern="^bleach_",      label="Bleach"},
+    {pattern="^elkman$",      label="Elkman"},
+    {pattern="^elkman_",      label="Elkman"},
+    {pattern="^doppel",       label="Doppel"},
+    {pattern="^gom$",         label="Gom"},
+    {pattern="^gom_",         label="Gom"},
+    {pattern="^conundrum",    label="Conundrum"},
+    {pattern="anglemonium",   label="Anglemonium"},
+    {pattern="frogermonium",  label="Frogermonium"},
+    {pattern="pinkimonium",   label="Pinkimonium"},
+    {pattern="pandesmoker",   label="Pandesmoker"},
+    {pattern="blitzemonium",  label="Blitzemonium"},
+}
+local function fuzzyNotifyLabel(name)
+    local nl = name:lower()
+    for _, e in ipairs(FuzzyNotifyPatterns) do
+        if nl:find(e.pattern) then return e.label end
+    end
+    return nil
+end
+local KeyNames = {NormalKeyCard="Key",InnerKeyCard="Key",RidgeKeyCard="Key",PasswordPaper="Password"}
+local BatteryNames = {AltBattery1="Battery",AltBattery2="Battery",AltBattery3="Battery",DefaultBattery1="Battery",DefaultBattery2="Battery",DefaultBattery3="Battery",RoomsBattery="Battery",DropBattery="Battery"}
+local ItemNames = {Blacklight="Blacklight",Book="The Necrobloxicon",BigFlashBeacon="Flash Beacon",BlueToyRemote="Blue Toy Remote",CatPlush="Kibo Plush",CodeBreacher="Code Breacher",CrateBlacklight="Blacklight",DwellerPiece="Dweller Chunk",Defib="Defibrillator",Defib2="Defibrillator",Decoder="Decoder",DogPlush="Logan Plush",EvilCat="Kibo Plush",FlashBeacon="Flash Beacon",Flashlight="Flashlight",Gravelight="Gravelight",Gummylight="Gummylight",Glider="Glider",HealthBoost="Perithesene",IntensityIncrease="Intensity Increase",Lantern="Lantern",Medkit="Medkit",Notebook="Notebook",OxygenTank="Oxygen Tank",SPRINT="SPRINT",SmallLantern="Lantern",Scanner="Scanner",Splorglight="Splorglight",RedeemerRevolver="Redeemer Revolver",Redeemer_Revolver="Redeemer Revolver",ToyRemote="Toy Remote",WindupLight="Hand Cranked Flashlight",["25HealthBoost"]="Neloprephine",NeoStyk="NeoStyk",Neostyk="NeoStyk",Neostyk1="NeoStyk",Neostyk2="NeoStyk",Neostk3="NeoStyk",Neostyk3="NeoStyk"}
+
+local function makeCurrencyMap()
+    local t = {Relic="500",GY5Cup="5",GY5Can1="5",GY5Can2="5",Blueprint="Blueprint",["50Currency"]="Blueprint",GY15="15",GY25="25",GY50="50",GY100="100",GY200="200",GY250="250"}
+    for _, v in ipairs({5,10,15,25,50,100,200}) do
+        local max = ({5,10,15,25,50,100,200})[_]
+        local count = ({7,8,12,12,8,10,7})[_]
+        for i = 1, count do t["Currency"..v.."-"..i] = tostring(v) end
+        for i = 1, 4 do t["GY10-"..i] = "10" end
+    end
+    return t
+end
+local CurrencyNames = makeCurrencyMap()
+
+-- Fill remaining GY10 entries manually since loop above only does 4
+CurrencyNames["GY10-1"]="10" CurrencyNames["GY10-2"]="10" CurrencyNames["GY10-3"]="10" CurrencyNames["GY10-4"]="10"
+
+local AmmoNames = {}
+for _, shells in ipairs({1,2,3,4,8}) do
+    for i = 1,3 do AmmoNames[shells.."Shells"..i] = tostring(shells) end
+end
+
+--// ESP
+local ESP_RENDER_DISTANCE = 150
+local espObjects = {}
+
+local function shouldIgnoreInstance(inst)
+    local n = inst.Name
+    if n=="TricksterDoor" or n=="MonsterLocker" or n=="ServerDoor" then return true end
+    if inst.Parent then
+        local pn = inst.Parent.Name
+        if (n=="Door" or n=="Locker") and (pn=="TricksterDoor" or pn=="MonsterLocker" or pn=="ServerDoor") then return true end
+    end
+    return false
+end
+
+local function createESP(inst, color, text, hl)
+    if inst:FindFirstChild("_ESPHighlight") or inst:FindFirstChild("_ESPBoard") or espObjects[inst] then return end
+    local highlight
+    if hl then
+        highlight = Instance.new("Highlight")
+        highlight.Name = "_ESPHighlight"
+        highlight.FillColor = color
+        highlight.FillTransparency = 0.65
+        highlight.OutlineColor = Color3.new(1,1,1)
+        highlight.OutlineTransparency = 0.15
+        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        highlight.Parent = inst
+    end
+    local attach = inst
+    local posSource
+    if inst:IsA("Model") then
+        local p = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart")
+        if p then attach = p; posSource = p end
+    elseif inst:IsA("BasePart") then posSource = inst end
+    local bb = Instance.new("BillboardGui")
+    bb.Name = "_ESPBoard"; bb.AlwaysOnTop = true; bb.Size = UDim2.new(0,120,0,24)
+    bb.StudsOffsetWorldSpace = Vector3.new(0,2.5,0); bb.LightInfluence = 0; bb.Parent = attach
+    local lbl = Instance.new("TextLabel")
+    lbl.Text = text; lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 13; lbl.TextColor3 = color
+    lbl.BackgroundTransparency = 1; lbl.Size = UDim2.new(1,0,1,0); lbl.TextXAlignment = Enum.TextXAlignment.Center
+    lbl.TextStrokeTransparency = 0.35; lbl.TextStrokeColor3 = Color3.new(0,0,0); lbl.Parent = bb
+    espObjects[inst] = {billboard=bb, highlight=highlight, attachPoint=attach, posSource=posSource, color=color, lastInRange=nil}
+end
+
+local function destroyESP(inst)
+    local d = espObjects[inst]
+    if d then
+        if d.highlight then d.highlight:Destroy() end
+        if d.billboard then d.billboard:Destroy() end
+        espObjects[inst] = nil
+    else
+        local h = inst:FindFirstChild("_ESPHighlight"); if h then h:Destroy() end
+        local b = inst:FindFirstChild("_ESPBoard"); if b then b:Destroy() end
+    end
+end
+
+task.spawn(function()
+    while task.wait(1) do
+        local char = LP.Character; if not char then continue end
+        local root = char:FindFirstChild("HumanoidRootPart"); if not root then continue end
+        local pp = root.Position
+        local staleKeys = {}
+        for inst, esp in pairs(espObjects) do
+            if not inst or not inst.Parent then
+                if esp.highlight then pcall(function() esp.highlight:Destroy() end) end
+                if esp.billboard then pcall(function() esp.billboard:Destroy() end) end
+                staleKeys[#staleKeys+1] = inst
+            end
+        end
+        for _, inst in ipairs(staleKeys) do espObjects[inst] = nil end
+        for inst, esp in pairs(espObjects) do
+            if not inst or not inst.Parent then continue end
+            -- Entity ESP ignores render distance — always visible
+            if esp.isEntity then continue end
+            -- Resolve posSource dynamically in case the Model had no BasePart at creation time
+            local src = esp.posSource
+            if not src or not src.Parent then
+                if inst:IsA("Model") then
+                    local p = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart")
+                    if p then esp.posSource = p; src = p end
+                end
+            end
+            local inRange
+            if src and src.Parent then
+                inRange = (pp - src.Position).Magnitude <= ESP_RENDER_DISTANCE
+            else
+                -- Last resort: use GetPivot for models still lacking a BasePart
+                local ok, cf = pcall(function() return inst:GetPivot() end)
+                if not ok then continue end
+                inRange = (pp - cf.Position).Magnitude <= ESP_RENDER_DISTANCE
+            end
+            if esp.lastInRange ~= inRange then
+                esp.lastInRange = inRange
+                if esp.billboard then esp.billboard.Enabled = inRange end
+                if esp.highlight then esp.highlight.Enabled = inRange end
+            end
+        end
+    end
+end)
+
+-- Generic ESP toggle factory
+local function makeESPToggle(box, id, text, nameMap, color, parent, showHL)
+    parent = parent or workspace.GameplayFolder.Rooms
+    box:AddToggle(id, {Text=text, Default=false, Callback=function(v)
+        if v then
+            trackConnection(id, parent.DescendantAdded:Connect(function(inst)
+                if not shouldIgnoreInstance(inst) and nameMap[inst.Name] then createESP(inst, color, nameMap[inst.Name], showHL) end
+            end))
+            for _, inst in ipairs(parent:GetDescendants()) do
+                if not shouldIgnoreInstance(inst) and nameMap[inst.Name] then createESP(inst, color, nameMap[inst.Name], showHL) end
+            end
+        else
+            removeConnection(id)
+            for _, inst in ipairs(parent:GetDescendants()) do if nameMap[inst.Name] then destroyESP(inst) end end
+        end
+    end})
+end
+
+--// Chat helper
+local TCS = game:GetService("TextChatService")
+local function SendChat(msg) pcall(function() TCS.TextChannels.RBXGeneral:SendAsync(tostring(msg)) end) end
+
+--// Entity loop helpers — consolidated dispatcher
+-- All active removal checks share ONE DescendantAdded connection per parent and ONE
+-- poll loop per parent, rather than each toggle having its own. This cuts the number
+-- of firing connections and GetDescendants() calls down to 2-3 regardless of how many
+-- removal toggles are on simultaneously.
+
+local EntityLoopFlags = {}  -- name -> checkFn when active, false when stopped
+local _removalParents = {}  -- parent -> {connKey, pollKey, checks={name->checkFn}}
+
+local function _getOrCreateParentEntry(parent)
+    if _removalParents[parent] then return _removalParents[parent] end
+    local entry = {checks = {}}
+    _removalParents[parent] = entry
+
+    -- Single shared DescendantAdded connection for this parent
+    local connKey = tostring(parent) .. "_shared_added"
+    trackConnection(connKey, parent.DescendantAdded:Connect(function(inst)
+        -- task.wait() lets the instance fully parent before checking
+        task.wait()
+        if not inst or not inst.Parent then return end
+        for _, checkFn in pairs(entry.checks) do
+            if checkFn(inst) then pcall(function() inst:Destroy() end); return end
+        end
+    end))
+    entry.connKey = connKey
+
+    -- Single shared poll loop for non-workspace parents (Rooms/Monsters)
+    -- Poll at 5s instead of 3s — the DescendantAdded catches most things instantly
+    if parent ~= workspace then
+        local pollKey = tostring(parent) .. "_shared_poll"
+        entry.pollKey = pollKey
+        task.spawn(function()
+            while _removalParents[parent] do
+                task.wait(5)
+                if not _removalParents[parent] then break end
+                pcall(function()
+                    for _, inst in ipairs(parent:GetDescendants()) do
+                        for _, checkFn in pairs(entry.checks) do
+                            if checkFn(inst) then pcall(function() inst:Destroy() end); break end
+                        end
+                    end
+                end)
+            end
+        end)
+    end
+    return entry
+end
+
+local function _cleanupParentIfEmpty(parent)
+    local entry = _removalParents[parent]
+    if not entry then return end
+    if next(entry.checks) ~= nil then return end
+    -- No checks left — disconnect the shared connection and remove the entry
+    removeConnection(entry.connKey)
+    _removalParents[parent] = nil
+end
+
+local function startEntityCheckLoop(name, checkFn, parent)
+    EntityLoopFlags[name] = checkFn
+    -- Initial sweep
+    for _, inst in ipairs(parent:GetDescendants()) do
+        if checkFn(inst) then pcall(function() inst:Destroy() end) end
+    end
+    local entry = _getOrCreateParentEntry(parent)
+    entry.checks[name] = checkFn
+end
+
+local function stopEntityCheckLoop(name)
+    local checkFn = EntityLoopFlags[name]
+    EntityLoopFlags[name] = false
+    -- Remove from whichever parent entry holds this check
+    for parent, entry in pairs(_removalParents) do
+        if entry.checks[name] then
+            entry.checks[name] = nil
+            _cleanupParentIfEmpty(parent)
+            break
+        end
+    end
+end
+
+--// Passive: Water Noclip Disable
+task.spawn(function()
+    while task.wait(0.3) do
+        pcall(function()
+            if not Toggles.Noclip or not Toggles.Noclip.Value then return end
+            if _Flags.FlyActive or _Flags.HideActive then return end
+            local char = LP.Character; if not char then return end
+            local hum = char:FindFirstChild("Humanoid")
+            if hum and hum.PlatformStand then Toggles.Noclip:SetValue(false) end
+        end)
+    end
+end)
+
+--// ─── MAIN TAB ───
+local QuickBox = Tabs.Main:AddLeftGroupbox("Quick Actions")
+local AutoBox  = Tabs.Main:AddRightGroupbox("Auto Interact")
+
+local InstantInteractEnabled = false
+ProximityPromptService.PromptButtonHoldBegan:Connect(function(p) if InstantInteractEnabled then p.HoldDuration = 0 end end)
+QuickBox:AddToggle("InstantInteract",{Text="Instant Interact",Default=false,Callback=function(v) InstantInteractEnabled=v end})
+QuickBox:AddToggle("FullBright",{Text="Full Bright",Default=false,Callback=function(v) game.Lighting.Ambient = v and Color3.new(1,1,1) or Color3.new(0,0,0) end})
+QuickBox:AddToggle("RemoveElectricity",{Text="Remove Electricity",Default=false,Callback=function(v) if v then startEntityCheckLoop("Electricity",function(i) return i:IsA("BasePart") and i.Name=="Electricity" end,workspace.GameplayFolder.Rooms) else stopEntityCheckLoop("Electricity") end end})
+QuickBox:AddToggle("RemoveSteam",{Text="Remove Steam",Default=false,Callback=function(v) if v then startEntityCheckLoop("Steam",function(i) return i:IsA("BasePart") and i.Name=="Steam" end,workspace.GameplayFolder.Rooms) else stopEntityCheckLoop("Steam") end end})
+QuickBox:AddToggle("AutoPandemoniumMinigame",{Text="Auto Pandemonium Minigame",Default=false,Callback=function(v)
+    if v then pcall(function()
+        local circle = LP.PlayerGui.Main.PandemoniumMiniGame.Background.Frame.circle
+        local op = circle.Position
+        trackConnection("AutoPandemoniumMinigame", circle:GetPropertyChangedSignal("Position"):Connect(function() circle.Position = op end))
+    end) else removeConnection("AutoPandemoniumMinigame") end
+end})
+
+--// Auto Hide
+local AH = {enabled=false,isHiding=false,spectate=false,quickReturn=false,activeEntities={},safePlatform=nil,originalCFrame=nil,spectateTarget=nil,spectateViewOffset=Vector3.new(0,5,0),originMarker=nil,originHL=nil,originAdornGui=nil}
+
+local function ahForceReturn()
+    if not AH.isHiding then return end
+    AH.isHiding=false; _Flags.HideActive=false; AH.activeEntities={}; AH.spectateTarget=nil
+    pcall(function()
+        if not LP.Character then return end
+        local root = LP.Character:FindFirstChild("HumanoidRootPart")
+        if root and AH.originalCFrame then root.CFrame = AH.originalCFrame end
+        AH.originalCFrame = nil
+        if AH.safePlatform then AH.safePlatform:Destroy(); AH.safePlatform=nil end
+        if AH.originHL then AH.originHL:Destroy(); AH.originHL=nil end
+        if AH.originMarker then AH.originMarker:Destroy(); AH.originMarker=nil end
+        if AH.originAdornGui then AH.originAdornGui:Destroy(); AH.originAdornGui=nil end
+    end)
+    Library:Notify("Force returned to position!", 4)
+end
+
+local function ahStartHiding()
+    if AH.isHiding then return end
+    AH.isHiding=true; _Flags.HideActive=true
+    pcall(function()
+        if not LP.Character then return end
+        local hum = LP.Character:FindFirstChild("Humanoid")
+        local root = LP.Character:FindFirstChild("HumanoidRootPart")
+        if not hum or not root then return end
+        AH.originalCFrame = root.CFrame
+        -- Force off fly if active so BodyVelocity doesn't fight the teleport
+        if _Flags.FlyActive and Toggles.EnableFly then
+            Toggles.EnableFly:SetValue(false)
+            task.wait(0.1)
+        end
+        -- Force off PlatformStand (swimming state) so the tp isn't blocked
+        if hum.PlatformStand then hum.PlatformStand=false; task.wait(0.3) end
+        -- Also reset humanoid state to ensure we're not in a swimming state
+        pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+        task.wait(0.1)
+        root.CFrame = root.CFrame + Vector3.new(0,2000,0); task.wait(0.1)
+        AH.safePlatform = Instance.new("Part")
+        AH.safePlatform.Size = Vector3.new(100,1,100)
+        AH.safePlatform.Position = root.Position - Vector3.new(0,5,0)
+        AH.safePlatform.Anchored = true; AH.safePlatform.CanCollide = true; AH.safePlatform.Parent = workspace
+        Library:Notify("Auto-hide activated!", 4)
+    end)
+    task.defer(function()
+        pcall(function()
+            if not AH.originalCFrame then return end
+            if AH.originHL then AH.originHL:Destroy(); AH.originHL=nil end
+            if AH.originMarker then AH.originMarker:Destroy() end
+            if AH.originAdornGui then AH.originAdornGui:Destroy() end
+            local originPos = AH.originalCFrame.Position
+            -- Cylinder marker — Highlight parented to workspace so it renders through walls
+            local marker = Instance.new("Part")
+            marker.Name="_AHOriginMarker"
+            marker.Shape = Enum.PartType.Cylinder
+            marker.Size = Vector3.new(300, 1.5, 1.5)
+            marker.CFrame = CFrame.new(originPos + Vector3.new(0,150,0)) * CFrame.Angles(0,0,math.pi/2)
+            marker.Anchored = true; marker.CanCollide = false; marker.CanTouch = false
+            marker.Material = Enum.Material.Neon
+            marker.Color = Color3.fromRGB(0,220,255)
+            marker.Transparency = 0 -- must be visible for Highlight to render it
+            marker.Parent = workspace
+            -- Highlight parented directly to workspace so it renders the adornee through walls
+            local hl = Instance.new("Highlight")
+            hl.FillColor = Color3.fromRGB(0,220,255)
+            hl.FillTransparency = 0.4
+            hl.OutlineColor = Color3.fromRGB(0,220,255)
+            hl.OutlineTransparency = 0
+            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            hl.Adornee = marker
+            hl.Parent = workspace
+            -- BillboardGui label above the marker
+            local bb = Instance.new("BillboardGui")
+            bb.AlwaysOnTop = true; bb.Size = UDim2.new(0,150,0,32)
+            bb.StudsOffsetWorldSpace = Vector3.new(0,152,0); bb.LightInfluence = 0; bb.Parent = marker
+            local lbl = Instance.new("TextLabel")
+            lbl.Text = "▼ Last Position"; lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 13
+            lbl.TextColor3 = Color3.fromRGB(0,220,255); lbl.BackgroundTransparency = 1
+            lbl.Size = UDim2.new(1,0,1,0); lbl.TextStrokeTransparency = 0.3
+            lbl.TextStrokeColor3 = Color3.new(0,0,0); lbl.Parent = bb
+            AH.originMarker = marker; AH.originHL = hl; AH.originAdornGui = nil
+        end)
+    end)
+end
+
+local function ahStopHiding()
+    if not AH.isHiding then return end
+    task.wait(0.5); if next(AH.activeEntities) ~= nil then return end
+    AH.isHiding=false; _Flags.HideActive=false; AH.spectateTarget=nil
+    pcall(function()
+        if not LP.Character then return end
+        local root = LP.Character:FindFirstChild("HumanoidRootPart")
+        if not root or not AH.originalCFrame then return end
+        root.CFrame = AH.originalCFrame; AH.originalCFrame=nil; task.wait(0.1)
+        if AH.safePlatform then AH.safePlatform:Destroy(); AH.safePlatform=nil end
+        if AH.originHL then AH.originHL:Destroy(); AH.originHL=nil end
+            if AH.originMarker then AH.originMarker:Destroy(); AH.originMarker=nil end
+            if AH.originAdornGui then AH.originAdornGui:Destroy(); AH.originAdornGui=nil end
+        Library:Notify("All entities gone — returned!", 4)
+    end)
+end
+
+RunService.RenderStepped:Connect(function()
+    if not AH.isHiding or not AH.spectate or not AH.spectateTarget then return end
+    pcall(function()
+        local t = AH.spectateTarget
+        if t and t.Parent then
+            local tp = t:IsA("Model") and (t.PrimaryPart and t.PrimaryPart.Position or t:GetPivot().Position) or t.Position
+            local cp = tp + AH.spectateViewOffset - (workspace.CurrentCamera.CFrame.LookVector*15)
+            workspace.CurrentCamera.CFrame = CFrame.lookAt(cp, tp+AH.spectateViewOffset)
+        else AH.spectateTarget=nil end
+    end)
+end)
+
+QuickBox:AddToggle("AutoHide",{Text="Auto Hide",Default=false,Callback=function(v)
+    AH.enabled=v
+    if v then
+        trackConnection("AutoHide", workspace.DescendantAdded:Connect(function(entity)
+            local _ahName = AutoHideEntities[entity.Name]
+            if not _ahName then
+                local _nl = entity.Name:lower()
+                if _nl:find("^carnation")   then _ahName = "Carnation"
+                elseif _nl:find("^a200$") or _nl:find("^a-200$") then _ahName = "A-200"
+                elseif _nl:find("^bleach")   then _ahName = "Bleach"
+                elseif _nl:find("anglemonium")  then _ahName = "Anglemonium"
+                elseif _nl:find("frogermonium") then _ahName = "Frogermonium"
+                elseif _nl:find("pinkimonium")  then _ahName = "Pinkimonium"
+                elseif _nl:find("pandesmoker")  then _ahName = "Pandesmoker"
+                elseif _nl:find("blitzemonium") then _ahName = "Blitzemonium"
+                elseif _nl:find("^doppel")      then _ahName = "Doppel"
+                end
+            end
+            if not AH.enabled or not _ahName or not entity:IsA("Part") then return end
+            AH.activeEntities[entity]=true
+            if AH.spectate and not AH.spectateTarget then AH.spectateTarget=entity end
+            Library:Notify(_ahName.." detected!", 4)
+            ahStartHiding()
+            local en = entity.Name
+            if AH.quickReturn and en~="Froger" and en~="RidgeFroger" and not (en:lower():find("^doppel")) then
+                task.spawn(function()
+                    while AH.activeEntities[entity] and AH.isHiding do
+                        task.wait(0.25)
+                        pcall(function()
+                            if not entity or not entity.Parent or not AH.originalCFrame then return end
+                            if (entity.Position-AH.originalCFrame.Position).Magnitude < 35 then
+                                task.wait(1.5)
+                                if entity and entity.Parent then
+                                    if (entity.Position-AH.originalCFrame.Position).Magnitude > 50 then ahForceReturn() end
+                                else ahForceReturn() end
+                            end
+                        end)
+                    end
+                end)
+            end
+            task.spawn(function()
+                entity.Destroying:Wait()
+                AH.activeEntities[entity]=nil
+                if AH.spectateTarget==entity then AH.spectateTarget=nil end
+                ahStopHiding()
+            end)
+        end))
+    else
+        removeConnection("AutoHide")
+        if AH.isHiding then ahForceReturn() end
+    end
+end})
+
+QuickBox:AddToggle("SpectateWhileHiding",{Text="Spectate Entity While Hiding",Default=false,Callback=function(v)
+    AH.spectate=v
+    if not v then AH.spectateTarget=nil; pcall(function() workspace.CurrentCamera.CameraType=Enum.CameraType.Custom end) end
+end})
+QuickBox:AddToggle("QuickReturn",{Text="Quick Return",Default=false,Callback=function(v) AH.quickReturn=v end})
+QuickBox:AddButton({Text="Force Return Now", Func=ahForceReturn})
+QuickBox:AddLabel("Force Return Keybind"):AddKeyPicker("ForceReturnKeybind",{Default="F",Mode="Toggle",Text="Force Return",NoUI=false,SyncToggleState=false})
+
+--// Mobile UI
+local mobileHideGui, mobileHideLocked = nil, false
+
+local function makeDraggableBtn(parent, name, text, bgColor, strokeColor, yOffset, onClick)
+    local btn = Instance.new("TextButton")
+    btn.Name=name; btn.Size=UDim2.new(0,120,0,44); btn.Position=UDim2.new(0,20,0.5,yOffset)
+    btn.BackgroundColor3=bgColor; btn.BorderSizePixel=0; btn.Text=text
+    btn.Font=Enum.Font.GothamBold; btn.TextSize=14; btn.TextColor3=Color3.fromRGB(255,255,255); btn.Parent=parent
+    local c=Instance.new("UICorner"); c.CornerRadius=UDim.new(0,8); c.Parent=btn
+    local s=Instance.new("UIStroke"); s.Color=strokeColor; s.Thickness=1.5; s.Parent=btn
+    btn.MouseButton1Click:Connect(onClick)
+    local dragging,dragStart,startPos = false,nil,nil
+    btn.InputBegan:Connect(function(i)
+        if mobileHideLocked then return end
+        if i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseButton1 then
+            dragging=true; dragStart=i.Position; startPos=btn.Position
+        end
+    end)
+    btn.InputChanged:Connect(function(i)
+        if not dragging then return end
+        if i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseMovement then
+            local d=i.Position-dragStart; btn.Position=UDim2.new(startPos.X.Scale,startPos.X.Offset+d.X,startPos.Y.Scale,startPos.Y.Offset+d.Y)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseButton1 then dragging=false end
+    end)
+    return btn
+end
+
+local function createMobileHideGui()
+    if mobileHideGui then return end
+    local sg = Instance.new("ScreenGui")
+    sg.Name="LustraMobileUI"; sg.ResetOnSpawn=false; sg.DisplayOrder=999; sg.IgnoreGuiInset=true; sg.Parent=LP.PlayerGui
+    makeDraggableBtn(sg,"ReturnBtn","↩ Return",Color3.fromRGB(30,30,40),Color3.fromRGB(100,100,160),-82,function() ahForceReturn() end)
+    local flyBtn = makeDraggableBtn(sg,"FlyBtn","✈ Fly: OFF",Color3.fromRGB(25,40,30),Color3.fromRGB(80,160,100),-30,function()
+        if Toggles.EnableFly then Toggles.EnableFly:SetValue(not Toggles.EnableFly.Value) end
+    end)
+    if Toggles.EnableFly then
+        Toggles.EnableFly.OnChanged:Connect(function(val)
+            if not flyBtn or not flyBtn.Parent then return end
+            flyBtn.Text = val and "✈ Fly: ON" or "✈ Fly: OFF"
+            flyBtn.BackgroundColor3 = val and Color3.fromRGB(30,80,40) or Color3.fromRGB(25,40,30)
+        end)
+    end
+    local ncBtn = makeDraggableBtn(sg,"NoclipBtn","🚫 Noclip: OFF",Color3.fromRGB(40,25,25),Color3.fromRGB(160,80,80),22,function()
+        if Toggles.Noclip then Toggles.Noclip:SetValue(not Toggles.Noclip.Value) end
+    end)
+    if Toggles.Noclip then
+        Toggles.Noclip.OnChanged:Connect(function(val)
+            if not ncBtn or not ncBtn.Parent then return end
+            ncBtn.Text = val and "🚫 Noclip: ON" or "🚫 Noclip: OFF"
+            ncBtn.BackgroundColor3 = val and Color3.fromRGB(80,30,30) or Color3.fromRGB(40,25,25)
+        end)
+    end
+    -- Jump sphere
+    local jf = Instance.new("Frame")
+    jf.Name="JumpSphere"; jf.Size=UDim2.new(0,72,0,72); jf.Position=UDim2.new(0.5,-36,1,-110)
+    jf.BackgroundColor3=Color3.fromRGB(40,60,100); jf.BorderSizePixel=0; jf.Parent=sg
+    local jc=Instance.new("UICorner"); jc.CornerRadius=UDim.new(1,0); jc.Parent=jf
+    local js=Instance.new("UIStroke"); js.Color=Color3.fromRGB(100,160,255); js.Thickness=2; js.Parent=jf
+    local jl=Instance.new("TextLabel"); jl.Text="▲"; jl.Font=Enum.Font.GothamBold; jl.TextSize=26
+    jl.TextColor3=Color3.fromRGB(180,210,255); jl.BackgroundTransparency=1; jl.Size=UDim2.new(1,0,1,0)
+    jl.TextXAlignment=Enum.TextXAlignment.Center; jl.TextYAlignment=Enum.TextYAlignment.Center; jl.Parent=jf
+    local jbtn=Instance.new("TextButton"); jbtn.Text=""; jbtn.BackgroundTransparency=1; jbtn.Size=UDim2.new(1,0,1,0); jbtn.ZIndex=2; jbtn.Parent=jf
+    -- doInfJump is defined in the Gameplay section; jump button fires it directly.
+    -- Falls back to a raw humanoid jump if infinite jump toggle is off.
+    local function mobileJump()
+        if Toggles.EnableInfJump and Toggles.EnableInfJump.Value then
+            doInfJump()
+        else
+            pcall(function() local h=LP.Character and LP.Character:FindFirstChild("Humanoid"); if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end end)
+        end
+    end
+    jbtn.MouseButton1Click:Connect(mobileJump)
+    local jumpHeld=false
+    jbtn.InputBegan:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseButton1 then
+            jumpHeld=true; task.spawn(function() while jumpHeld do mobileJump(); task.wait(0.15) end end)
+        end
+    end)
+    jbtn.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseButton1 then jumpHeld=false end end)
+    local jDragging,jDragStart,jStartPos=false,nil,nil
+    jf.InputBegan:Connect(function(i)
+        if mobileHideLocked then return end
+        if i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseButton1 then jDragging=true; jDragStart=i.Position; jStartPos=jf.Position end
+    end)
+    jf.InputChanged:Connect(function(i)
+        if not jDragging then return end
+        if i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseMovement then
+            local d=i.Position-jDragStart; jf.Position=UDim2.new(jStartPos.X.Scale,jStartPos.X.Offset+d.X,jStartPos.Y.Scale,jStartPos.Y.Offset+d.Y)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseButton1 then jDragging=false end end)
+    mobileHideGui=sg
+end
+local function destroyMobileHideGui() if mobileHideGui then mobileHideGui:Destroy(); mobileHideGui=nil end end
+
+--// Auto Interact
+local function isInShop(inst)
+    local p=inst.Parent
+    while p and p~=workspace do if p.Name=="Shop" or p.Name:find("Shop") then return true end; p=p.Parent end
+    return false
+end
+
+local function makeAutoInteract(toggleId, nameMap, connName, stateRef, shopGuard)
+    local function handle(inst, state)
+        if not inst:IsA("ProximityPrompt") then return end
+        local pname = inst.Parent.Parent and inst.Parent.Parent.Name or ""
+        if not nameMap[pname] then return end
+        if shopGuard and isInShop(inst) then return end
+        inst.HoldDuration=0; inst.MaxActivationDistance=10
+        task.spawn(function()
+            while stateRef[1] and task.wait(0.1) do
+                if LP:DistanceFromCharacter(inst.Parent.Position)<=10 then fireproximityprompt(inst) end
+            end
+        end)
+    end
+    AutoBox:AddToggle(toggleId,{Text="Auto Interact "..toggleId:gsub("AutoInteract",""),Default=false,Callback=function(v)
+        stateRef[1]=v
+        if v then
+            trackConnection(connName, workspace.GameplayFolder.Rooms.DescendantAdded:Connect(function(i) handle(i, stateRef) end))
+            for _, i in ipairs(workspace.GameplayFolder.Rooms:GetDescendants()) do handle(i, stateRef) end
+        else removeConnection(connName) end
+    end})
+end
+
+local keyState,batteryState,itemState,currencyState = {false},{false},{false},{false}
+makeAutoInteract("AutoInteractKey",KeyNames,"AIKey",keyState)
+makeAutoInteract("AutoInteractBattery",BatteryNames,"AIBattery",batteryState)
+makeAutoInteract("AutoInteractItem",ItemNames,"AIItem",itemState,true)
+makeAutoInteract("AutoInteractCurrency",CurrencyNames,"AICurrency",currencyState)
+
+local genState = {false}
+AutoBox:AddToggle("AutoGenerator",{Text="Auto Generator",Default=false,Callback=function(v)
+    genState[1]=v
+    if v then
+        local function handleGen(g)
+            if not ((g.Name=="Generator" or g.Name=="PresetGenerator" or g.Name=="EncounterGenerator") and g:IsA("Model")) then return end
+            task.spawn(function()
+                while genState[1] and task.wait(0.1) do
+                    pcall(function()
+                        if g:FindFirstChild("RemoteFunction") then g.RemoteFunction:InvokeServer() end
+                        if g:FindFirstChild("RemoteEvent") then g.RemoteEvent:FireServer(true) end
+                    end)
+                end
+            end)
+        end
+        trackConnection("AutoGenerator", workspace.GameplayFolder.Rooms.DescendantAdded:Connect(handleGen))
+        for _, g in ipairs(workspace.GameplayFolder.Rooms:GetDescendants()) do handleGen(g) end
+    else removeConnection("AutoGenerator") end
+end})
+
+local BlatantBox = Tabs.Main:AddLeftGroupbox("Blatant")
+BlatantBox:AddToggle("InstaKeycard",{Text="Insta Keycard",Default=false,Callback=function(v)
+    if v then
+        for _, p in ipairs(workspace:GetDescendants()) do if p:IsA("ProximityPrompt") then p.MaxActivationDistance=p.MaxActivationDistance*1.2 end end
+        trackConnection("InstaKeycard", ProximityPromptService.PromptButtonHoldBegan:Connect(function(p)
+            if p:FindFirstAncestor("Keypad0") then return end
+            p:InputHoldEnd(); task.wait(0.03); fireproximityprompt(p)
+        end))
+        -- Auto-use NormalDoor lock prompts when the player has a NormalKeyCard
+        local function hasNormalKeyCard()
+            return pcall(function()
+                local inv = LP:FindFirstChild("PlayerFolder") and LP.PlayerFolder:FindFirstChild("Inventory")
+                if not inv then error("no inv") end
+                if not inv:FindFirstChild("NormalKeyCard") then error("no card") end
+            end) and true or false
+        end
+        local function getCurrentRoom()
+            local char = LP.Character; if not char then return nil end
+            local root = char:FindFirstChild("HumanoidRootPart"); if not root then return nil end
+            local pp = root.Position
+            local rooms = workspace:FindFirstChild("GameplayFolder") and workspace.GameplayFolder:FindFirstChild("Rooms")
+            if not rooms then return nil end
+            local bestRoom, bestDist = nil, math.huge
+            for _, room in ipairs(rooms:GetChildren()) do
+                if room:IsA("Model") then
+                    local ok, cf = pcall(function() return room:GetPivot() end)
+                    if ok then
+                        local dist = (cf.Position - pp).Magnitude
+                        if dist < bestDist then bestDist = dist; bestRoom = room end
+                    end
+                end
+            end
+            return bestRoom
+        end
+        local function tryUseDoorPrompts()
+            if not hasNormalKeyCard() then return end
+            local room = getCurrentRoom(); if not room then return end
+            local char = LP.Character; if not char then return end
+            local root = char:FindFirstChild("HumanoidRootPart"); if not root then return end
+            local pp = root.Position
+            local entrances = room:FindFirstChild("Entrances"); if not entrances then return end
+            for _, door in ipairs(entrances:GetChildren()) do
+                if door.Name == "NormalDoor" then
+                    local lockFolder = door:FindFirstChild("Lock")
+                    if lockFolder then
+                        local main = lockFolder:FindFirstChild("Main")
+                        if main then
+                            local prompt = main:FindFirstChild("ProximityPrompt")
+                            if prompt then
+                                local part = prompt.Parent
+                                if part and part:IsA("BasePart") then
+                                    if (pp - part.Position).Magnitude <= 15 then
+                                        pcall(function() fireproximityprompt(prompt) end)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        trackConnection("InstaKeycardDoor", RunService.Heartbeat:Connect(function()
+            pcall(tryUseDoorPrompts)
+        end))
+    else
+        removeConnection("InstaKeycard")
+        removeConnection("InstaKeycardDoor")
+    end
+end})
+
+
+local _noDamageDeleted = false
+if getfenv().getnilinstances then
+    for _, v in ipairs(getfenv().getnilinstances()) do
+        if v:IsA("RemoteFunction") then pcall(v.Destroy, v); _noDamageDeleted=true end
+    end
+end
+local _noDamageEnabled,_noDamageClosed = false,false
+local _noDamageChanged = Instance.new("BindableEvent")
+local function blockRemote(object)
+    local oldParent=object.Parent
+    while not _noDamageClosed do
+        local target = not _noDamageEnabled and oldParent or nil
+        if not pcall(function() object.Parent=target end) or object.Parent~=target then break end
+        _noDamageChanged.Event:Wait()
+        if not object then return end
+    end
+    pcall(function() object.Parent=oldParent end)
+end
+if _noDamageDeleted then
+    BlatantBox:AddToggle("NoDamage",{Text="No Damage",Default=false,Risky=true,Callback=function(v)
+        _noDamageEnabled=v; _noDamageChanged:Fire()
+        if v then
+            local events=game:GetService("ReplicatedStorage"):FindFirstChild("Events")
+            if events then local dmg=events:FindFirstChild("LocalDamage"); if dmg then task.spawn(blockRemote,dmg) end end
+        end
+    end})
+else
+    BlatantBox:AddLabel("No Damage: executor not supported")
+end
+Library.OnUnload(function() _noDamageClosed=true; _noDamageEnabled=false; _noDamageChanged:Fire() end)
+
+--// ─── LOBBY ONLY GROUPBOX (whitelist-gated) ───
+local LobbyBox = Tabs.Main:AddRightGroupbox("LOBBY ONLY")
+
+task.spawn(function()
+    -- Fetch whitelist from GitHub. To update access: edit whitelist.json in your repo.
+    -- publicAccess=true  → everyone can use it
+    -- publicAccess=false → only whitelisted user IDs can use it
+    local WHITELIST_URL = "https://raw.githubusercontent.com/RadiantSkullz/test/refs/heads/main/whitelist.json"
+
+    local ok, result = pcall(function()
+        return game:HttpGet(WHITELIST_URL)
+    end)
+
+    local canUse = false
+    if ok and result then
+        local parsed = pcall(function()
+            local data = game:GetService("HttpService"):JSONDecode(result)
+            if data.publicAccess then
+                canUse = true
+            else
+                for _, id in ipairs(data.whitelist or {}) do
+                    if id == LP.UserId then canUse = true; break end
+                end
+            end
+        end)
+    end
+
+    if not canUse then
+        LobbyBox:AddLabel("You do not have access\nto this section.", true)
+        return
+    end
+
+    -- ── Access granted — build the UI ──
+    LobbyBox:AddLabel("This is ONLY for modifier runs.\nYou do NOT need modifiers unlocked\nto use this. Use in lobby only.", true)
+
+    local _lobbyModifiers = {
+        "AdminPanel","StreamIntergration","UpTheAnte","UpTheHate","SoMuchVariety","SneakAttack",
+        "Hunted","DeathWatch","TightSecurity","ClosedForTheNight","Lightwork","ForgotTheBills",
+        "Paranoia","NaturalResistance","GoodPeople","Redeemer","TurretUpgrades","GuestStarsRooms",
+        "GuestStarsGrace","DevilIncarnate","GuestStarsConundrum","AlwaysEyefestation",
+        "EnragedEyefestation","NAVIgationMalfunction","BudgetCutbacks","NightLightOff",
+        "ArtPortfolio","DoorStuck","Glue","WetFloor","Butterfingers","SquiddlePlus","Sitcom",
+        "FreezeFrame","RestlessDreams","ShallowPockets","TwoHands","IAlwaysComeBack",
+        "PorousWalls","HotPotato","Landyours","ExplosiveStorage","SubspaceTripwires",
+        "Friendly","Deception","Chaos","PurePandemonium","3AMChallenge","Interloper",
+        "NotForBroadcast","RatRace","NoodleLegs","LockIn","AllOrNothing",
+    }
+    local _lobbyAccess = "Public"
+
+    LobbyBox:AddDropdown("LobbyModifierSelect", {
+        Values = _lobbyModifiers,
+        Default = 1,
+        Multi = true,
+        Text = "Modifiers",
+        Callback = function(_) end,
+    })
+
+    LobbyBox:AddSlider("LobbyModifierCount", {
+        Text = "Each Modifier Count",
+        Default = 1, Min = 1, Max = 75, Rounding = 0,
+        Callback = function(_) end,
+    })
+
+    LobbyBox:AddSlider("LobbySize", {
+        Text = "Lobby Size (1-9)",
+        Default = 2, Min = 1, Max = 9, Rounding = 0,
+        Callback = function(_) end,
+    })
+
+    LobbyBox:AddButton({Text="Access: Public", Func=function()
+        _lobbyAccess = "Public"
+        Library:Notify("Lobby access set to Public", 3)
+    end})
+
+    LobbyBox:AddButton({Text="Access: Friends", Func=function()
+        _lobbyAccess = "Friends"
+        Library:Notify("Lobby access set to Friends", 3)
+    end})
+
+    LobbyBox:AddButton({Text="Start Lobby", Func=function()
+        local selected = Options.LobbyModifierSelect and Options.LobbyModifierSelect.Value or {}
+        local count = Options.LobbyModifierCount and Options.LobbyModifierCount.Value or 1
+        local size = Options.LobbySize and Options.LobbySize.Value or 2
+
+        local mods = {}
+        for modifier, isSelected in pairs(selected) do
+            if isSelected then
+                for _ = 1, count do mods[#mods + 1] = modifier end
+            end
+        end
+
+        if #mods == 0 then Library:Notify("No modifiers selected!", 3); return end
+
+        local modNames = {}
+        for modifier, isSelected in pairs(selected) do
+            if isSelected then modNames[#modNames+1] = modifier end
+        end
+
+        pcall(function()
+            game:GetService("ReplicatedStorage").Events.CreateLobby:InvokeServer({
+                Gamemode = "Modifiers",
+                LobbyAccess = _lobbyAccess,
+                LobbySize = size,
+                Modifiers = mods,
+            })
+        end)
+        Library:Notify("Lobby: "..table.concat(modNames, ", ").." x"..count.." ("..size.." slots, ".._lobbyAccess..")", 6)
+    end})
+end)
+
+--// ─── ESP TAB ───
+local EntityESPBox   = Tabs.ESP:AddLeftGroupbox("Entity Detection")
+local ItemESPBox     = Tabs.ESP:AddRightGroupbox("Item Detection")
+local ObjectESPBox   = Tabs.ESP:AddLeftGroupbox("Object Detection")
+local ESPSettingsBox = Tabs.ESP:AddRightGroupbox("Settings")
+
+local skipDespawn = {Pandemonium=true,Eyefestation=true,WallDweller=true,RottenWallDweller=true,Statue=true,BiggerStatue=true,DiVine=true,FishBody=true,Baldi=true,Bouncer=true,SkeletonHead=true,Carnation=true,CARNATION=true,A200=true,Bleach=true,Anglemonium=true,Frogermonium=true,Pinkimonium=true,Pandesmoker=true,Blitzemonium=true,Gom=true}
+
+-- Dedup tables: track recently fired labels so DescendantAdded firing for sub-instances
+-- of the same entity model doesn't produce duplicate notifications.
+local _notifyRecentSpawn  = {}
+local _notifyRecentDespawn = {}
+local _chatRecentSpawn    = {}
+local _chatRecentDespawn  = {}
+local NOTIFY_COOLDOWN = 2 -- seconds before the same label can fire again
+
+local function canFire(tbl, label)
+    local now = tick()
+    if tbl[label] and (now - tbl[label]) < NOTIFY_COOLDOWN then return false end
+    tbl[label] = now
+    return true
+end
+
+EntityESPBox:AddToggle("EntityNotify",{Text="Entity Notify",Default=false,Callback=function(v)
+    if v then
+        trackConnection("SpawnNotify", workspace.DescendantAdded:Connect(function(i)
+            local label = EntityNotifyNames[i.Name] or (i.Parent==workspace and fuzzyNotifyLabel(i.Name))
+            if label and canFire(_notifyRecentSpawn, label) then Library:Notify(label.." spawned",4) end
+        end))
+        trackConnection("DespawnNotify", workspace.DescendantRemoving:Connect(function(i)
+            local label = EntityNotifyNames[i.Name] or (i.Parent==workspace and fuzzyNotifyLabel(i.Name))
+            if label and not skipDespawn[i.Name] and canFire(_notifyRecentDespawn, label) then task.wait(); Library:Notify(label.." despawned",4) end
+        end))
+    else removeConnection("SpawnNotify"); removeConnection("DespawnNotify") end
+end})
+
+EntityESPBox:AddToggle("ChatEntityNotify",{Text="Chat Entity Notify",Default=false,Callback=function(v)
+    if v then
+        trackConnection("ChatSpawnNotify", workspace.DescendantAdded:Connect(function(i)
+            local label = EntityNotifyNames[i.Name] or (i.Parent==workspace and fuzzyNotifyLabel(i.Name))
+            if label and canFire(_chatRecentSpawn, label) then SendChat(label.." spawned") end
+        end))
+        trackConnection("ChatDespawnNotify", workspace.DescendantRemoving:Connect(function(i)
+            local label = EntityNotifyNames[i.Name] or (i.Parent==workspace and fuzzyNotifyLabel(i.Name))
+            if label and not skipDespawn[i.Name] and canFire(_chatRecentDespawn, label) then task.wait(); SendChat(label.." despawned") end
+        end))
+    else removeConnection("ChatSpawnNotify"); removeConnection("ChatDespawnNotify") end
+end})
+
+local function createEntityESP(i)
+    if not shouldIgnoreInstance(i) and EntityNames[i.Name] then
+        createESP(i, Color3.new(1,0,0), EntityNames[i.Name], true)
+        if espObjects[i] then espObjects[i].isEntity = true end
+    end
+end
+EntityESPBox:AddToggle("EntityESP",{Text="Entity ESP",Default=false,Callback=function(v)
+    if v then
+        trackConnection("EntityESP", workspace.DescendantAdded:Connect(function(i) createEntityESP(i) end))
+        for _, i in ipairs(workspace:GetDescendants()) do createEntityESP(i) end
+    else
+        removeConnection("EntityESP")
+        for _, i in ipairs(workspace:GetDescendants()) do if EntityNames[i.Name] then destroyESP(i) end end
+    end
+end})
+
+makeESPToggle(ItemESPBox,"KeyESP","Key ESP",KeyNames,Color3.new(1,1,0),workspace.GameplayFolder.Rooms,false)
+makeESPToggle(ItemESPBox,"BatteryESP","Battery ESP",BatteryNames,Color3.new(0,1,1),workspace.GameplayFolder.Rooms,false)
+makeESPToggle(ItemESPBox,"ItemESP","Item ESP",ItemNames,Color3.new(0,1,0),workspace.GameplayFolder.Rooms,false)
+makeESPToggle(ItemESPBox,"CurrencyESP","Currency ESP",CurrencyNames,Color3.new(1,0.84,0),workspace.GameplayFolder.Rooms,false)
+makeESPToggle(ItemESPBox,"AmmoESP","Ammo ESP",AmmoNames,Color3.new(1,0,1),workspace.GameplayFolder.Rooms,false)
+
+-- Generator ESP
+ObjectESPBox:AddToggle("GeneratorESP",{Text="Generator ESP",Default=false,Callback=function(v)
+    local function setupGenerator(gen)
+        if not gen:IsA("Model") or not gen.Name:lower():find("generator") or espObjects[gen] then return end
+        local intVal = gen:FindFirstChild("Fixed",true) or gen:FindFirstChildWhichIsA("IntValue")
+        if not intVal or not intVal:IsA("IntValue") or intVal.Value>=100 then return end
+        createESP(gen,Color3.fromRGB(220,60,60),"Generator ["..intVal.Value.."%]",true)
+        local conn; conn=intVal:GetPropertyChangedSignal("Value"):Connect(function()
+            if intVal.Value>=100 then conn:Disconnect(); destroyESP(gen); return end
+            local esp=espObjects[gen]; if esp and esp.billboard then
+                local nl=esp.billboard:FindFirstChild("NameLabel"); if nl then nl.Text="Generator ["..intVal.Value.."%]" end
+            end
+        end)
+    end
+    if v then
+        trackConnection("GeneratorESP", workspace.GameplayFolder.Rooms.DescendantAdded:Connect(function(i) task.defer(function() if i and i.Parent then setupGenerator(i) end end) end))
+        for _, i in ipairs(workspace.GameplayFolder.Rooms:GetDescendants()) do setupGenerator(i) end
+    else
+        removeConnection("GeneratorESP")
+        for inst in pairs(espObjects) do if inst:IsA("Model") and inst.Name:lower():find("generator") then destroyESP(inst) end end
+    end
+end})
+
+-- Simple object ESPs
+local objectESPs = {
+    {id="LockerESP",text="Locker ESP",name="Locker",color=Color3.new(0.4,0.4,0.4)},
+    {id="LeverESP",text="Lever ESP",name="Lever",color=Color3.new(0.6,0.3,0.1)},
+    {id="RadioESP",text="Radio ESP",name="Radio",color=Color3.new(0.2,0.2,0.2)},
+    {id="BombESP",text="Bomb ESP",name="Bomb",color=Color3.new(0.1,0.1,0.1)},
+    {id="GraveyardGateESP",text="Graveyard Gate ESP",name="Gate",color=Color3.new(0.5,0,0.5)},
+}
+for _, e in ipairs(objectESPs) do
+    local n=e.name
+    ObjectESPBox:AddToggle(e.id,{Text=e.text,Default=false,Callback=function(v)
+        local skip = n=="Locker"
+        if v then
+            trackConnection(e.id, workspace.GameplayFolder.Rooms.DescendantAdded:Connect(function(i)
+                if skip and i.Name=="MonsterLocker" then return end
+                if not shouldIgnoreInstance(i) and i.Name==n then createESP(i,e.color,n,true) end
+            end))
+            for _, i in ipairs(workspace.GameplayFolder.Rooms:GetDescendants()) do
+                if (not skip or i.Name~="MonsterLocker") and not shouldIgnoreInstance(i) and i.Name==n then createESP(i,e.color,n,true) end
+            end
+        else
+            removeConnection(e.id)
+            for _, i in ipairs(workspace.GameplayFolder.Rooms:GetDescendants()) do if i.Name==n then destroyESP(i) end end
+        end
+    end})
+end
+
+-- Door ESP
+local RealDoorNames = {NormalDoor=true,LockedDoor=true,Door=true}
+local function isRealDoor(inst)
+    if not inst:IsA("Model") or not RealDoorNames[inst.Name] then return false end
+    local p=inst.Parent; while p and p~=workspace do if p.Name=="TricksterDoor" then return false end; p=p.Parent end
+    return true
+end
+ObjectESPBox:AddToggle("DoorESP",{Text="Door ESP",Default=false,Callback=function(v)
+    local processed={}
+    if v then
+        trackConnection("DoorESP", workspace.GameplayFolder.Rooms.DescendantAdded:Connect(function(i)
+            if isRealDoor(i) and not processed[i] then createESP(i,Color3.new(0.3,0.5,0.7),"Door",true); processed[i]=true end
+        end))
+        for _, i in ipairs(workspace.GameplayFolder.Rooms:GetDescendants()) do
+            if isRealDoor(i) and not processed[i] then createESP(i,Color3.new(0.3,0.5,0.7),"Door",true); processed[i]=true end
+        end
+    else
+        removeConnection("DoorESP")
+        for _, i in ipairs(workspace.GameplayFolder.Rooms:GetDescendants()) do if i:IsA("Model") and RealDoorNames[i.Name] then destroyESP(i) end end
+    end
+end})
+
+ESPSettingsBox:AddSlider("ESPRenderDistance",{Text="ESP Render Distance",Default=150,Min=50,Max=300,Rounding=0,Suffix=" studs",Callback=function(v)
+    ESP_RENDER_DISTANCE=v
+    -- Reset cache so the loop re-evaluates visibility for all existing ESP objects immediately
+    for _, esp in pairs(espObjects) do esp.lastInRange = nil end
+end})
+
+--// ─── REMOVAL TAB ───
+local RemoveBox  = Tabs.Removal:AddLeftGroupbox("Entity Removal")
+local RemoveBox2 = Tabs.Removal:AddRightGroupbox("More Removals")
+
+-- Resolves parent lazily so missing folders (e.g. workspace.Monsters) don't crash at script load
+local function getParent(tag)
+    if tag == "Rooms"    then return workspace:FindFirstChild("GameplayFolder") and workspace.GameplayFolder:FindFirstChild("Rooms") end
+    if tag == "Monsters" then return workspace:FindFirstChild("Monsters") end
+    return workspace
+end
+
+local removalDefs = {
+    {box=RemoveBox, id="RemoveBomb",             text="Remove Bomb (Tripwire)",      key="RemoveTripwire",      fn=function(i) return i.Name=="Tripwire" end,                                                                                                        parentTag="Rooms"},
+    {box=RemoveBox, id="RemovePandemonium",       text="Remove Pandemonium",          key="RemovePandemonium",   fn=function(i) local n=i.Name:lower(); return n=="pandemonium" or n=="anglemonium" or n=="frogermonium" or n=="pinkimonium" or n=="pandesmoker" or n=="blitzemonium" end, parentTag="workspace"},
+    {box=RemoveBox, id="RemoveStatue",            text="Remove Statue",               key="RemoveStatue",        fn=function(i) return i.Name=="Statue" or i.Name=="StatueRoot" end,                                                                                  parentTag="Rooms"},
+    {box=RemoveBox, id="RemoveBiggerStatue",      text="Remove BiggerStatue",         key="RemoveBiggerStatue",  fn=function(i) return i.Name=="BiggerStatue" end,                                                                                                    parentTag="Rooms"},
+    {box=RemoveBox, id="RemoveDiVine",            text="Remove DiVine",               key="RemoveDiVine",        fn=function(i) return i.Name=="DiVine" end,                                                                                                          parentTag="Rooms"},
+    {box=RemoveBox, id="RemoveSearchlights",      text="Remove Searchlights",         key="RemoveSearchlights",  fn=function(i) return i.Name=="MainSearchlight" or i.Name:match("^Searchlights%d+$") or i.Name:match("^SearchlightsEnding%d+$") end,                parentTag="Rooms"},
+    {box=RemoveBox2,id="RemoveEnragedEyefestation",text="Remove Enraged Eyefestation",key="RemoveEnragedEye",   fn=function(i) return i.Name=="Enraged Eyefestation" or i.Name=="EnragedEyefestation" end,                                                           parentTag="Rooms"},
+    {box=RemoveBox2,id="RemoveChaseSteam",        text="Remove Chase Steam",          key="RemoveChaseSteam",    fn=function(i) return i.Name=="ChaseSteam" end,                                                                                                      parentTag="Rooms"},
+    {box=RemoveBox2,id="RemoveChaseFanModel",     text="Remove Chase Fan Model",      key="RemoveChaseFanModel", fn=function(i) local f={ChaseFanModel1=true,ChaseFanModel2=true,ChaseFanModel3=true,ChaseFanModel4=true,ChaseFanModel5=true,ChaseFanModel6=true}; return f[i.Name] end, parentTag="Rooms"},
+    {box=RemoveBox2,id="RemoveFish",              text="Remove Fish",                 key="RemoveFish",          fn=function(i) return i.Name=="FishBody" end,                                                                                                        parentTag="workspace"},
+    {box=RemoveBox2,id="RemoveAbomination",       text="Remove Abomination",          key="RemoveAbomination",   fn=function(i) return i.Name=="Abomination" end,                                                                                                     parentTag="workspace"},
+    {box=RemoveBox2,id="RemovePipsqueak",         text="Remove Pipsqueak",            key="RemovePipsqueak",     fn=function(i) return i.Name=="Pipsqueak" end,                                                                                                       parentTag="workspace"},
+    {box=RemoveBox2,id="RemoveBaldi",             text="Remove Baldi",                key="RemoveBaldi",         fn=function(i) return i.Name=="Baldi" end,                                                                                                           parentTag="workspace"},
+    {box=RemoveBox2,id="RemoveBouncer",           text="Remove Bouncer",              key="RemoveBouncer",       fn=function(i) return i.Name=="Bouncer" end,                                                                                                         parentTag="Monsters"},
+    {box=RemoveBox2,id="RemoveSkelepede",         text="Remove Skelepede",            key="RemoveSkelepede",     fn=function(i) return i.Name=="SkeletonHead" end,                                                                                                    parentTag="Monsters"},
+    {box=RemoveBox2,id="RemoveParasite",          text="Remove Parasite",             key="RemoveParasite",      fn=function(i) return i.Name=="StatueRoot" end,                                                                                                      parentTag="Monsters"},
+    -- New entities — fuzzy matched since exact internal names are uncertain
+    {box=RemoveBox2,id="RemoveBottomfeeder",      text="Remove Bottomfeeder",         key="RemoveBottomfeeder",  fn=function(i) local n=i.Name:lower(); return n:find("bottomfeeder") or n:find("bottom_feeder") end,                                                 parentTag="workspace"},
+    {box=RemoveBox2,id="RemoveGoodPeople",        text="Remove GoodPeople",           key="RemoveGoodPeople",    fn=function(i) local n=i.Name:lower(); return n:find("goodpeople") or n:find("good_people") or n=="goodpeople" end,                                  parentTag="workspace"},
+    {box=RemoveBox2,id="RemoveStan",              text="Remove Stan",                 key="RemoveStan",          fn=function(i) return i.Name=="Stan" or i.Name=="Stan_NPC" or i.Name:lower():find("^stan") end,                                                      parentTag="workspace"},
+    {box=RemoveBox2,id="RemoveCandlebearer",      text="Remove Candlebearer",         key="RemoveCandlebearer",  fn=function(i) local n=i.Name:lower(); return n:find("candlebearer") or n:find("candle_bearer") or n:find("candlecarrier") end,                              parentTag="workspace"},
+}
+for _, d in ipairs(removalDefs) do
+    d.box:AddToggle(d.id,{Text=d.text,Default=false,Callback=function(v)
+        if v then
+            local parent = getParent(d.parentTag)
+            if not parent then
+                -- Silently wait up to 60s for the folder to appear (e.g. workspace.Monsters only exists mid-round)
+                task.spawn(function()
+                    local waited = 0
+                    repeat task.wait(1); waited = waited + 1; parent = getParent(d.parentTag) until parent or waited >= 60
+                    -- Only start if the toggle is still on
+                    if parent and Toggles[d.id] and Toggles[d.id].Value then
+                        startEntityCheckLoop(d.key, d.fn, parent)
+                    end
+                end)
+                return
+            end
+            startEntityCheckLoop(d.key, d.fn, parent)
+        else
+            stopEntityCheckLoop(d.key)
+        end
+    end})
+end
+
+
+-- Special: Eyefestation (deactivate instead of destroy)
+RemoveBox:AddToggle("RemoveEyefestation",{Text="Remove Eyefestation",Default=false,Callback=function(v)
+    if v then
+        local function deactivate(inst)
+            if inst.Name~="Eyefestation" then return end
+            task.wait(1.5)
+            pcall(function() if inst and inst.Parent and inst:FindFirstChild("Active") then inst.Active.Value=false end end)
+        end
+        for _, i in ipairs(workspace.GameplayFolder.Rooms:GetDescendants()) do task.spawn(deactivate,i) end
+        trackConnection("RemoveEyefestation_added", workspace.GameplayFolder.Rooms.DescendantAdded:Connect(function(i) task.spawn(deactivate,i) end))
+        EntityLoopFlags["RemoveEyefestation"]=true
+        task.spawn(function()
+            while EntityLoopFlags["RemoveEyefestation"] do
+                task.wait(2); if not EntityLoopFlags["RemoveEyefestation"] then break end
+                pcall(function()
+                    for _, i in ipairs(workspace.GameplayFolder.Rooms:GetDescendants()) do
+                        if i.Name=="Eyefestation" and i:FindFirstChild("Active") and i.Active.Value==true then i.Active.Value=false end
+                    end
+                end)
+            end
+        end)
+    else EntityLoopFlags["RemoveEyefestation"]=false; removeConnection("RemoveEyefestation_added") end
+end})
+
+-- Special: Turret (attribute instead of destroy)
+RemoveBox:AddToggle("RemoveTurret",{Text="Remove Turret",Default=false,Callback=function(v)
+    local function disableTurret(i) if i.Name:match("TurretSpawn") then pcall(function() i:SetAttribute("Active",false) end) end end
+    if v then
+        for _, i in ipairs(workspace.GameplayFolder.Rooms:GetDescendants()) do disableTurret(i) end
+        trackConnection("RemoveTurret_added", workspace.GameplayFolder.Rooms.DescendantAdded:Connect(disableTurret))
+        EntityLoopFlags["RemoveTurret"]=true
+        task.spawn(function()
+            while EntityLoopFlags["RemoveTurret"] do
+                task.wait(3); if not EntityLoopFlags["RemoveTurret"] then break end
+                pcall(function() for _, i in ipairs(workspace.GameplayFolder.Rooms:GetDescendants()) do disableTurret(i) end end)
+            end
+        end)
+    else EntityLoopFlags["RemoveTurret"]=false; removeConnection("RemoveTurret_added") end
+end})
+
+--// ─── THE HUNTED GROUPBOX ───
+local HuntedBox = Tabs.Removal:AddLeftGroupbox("The Hunted")
+
+HuntedBox:AddToggle("AntiRebarb", {
+    Text = "Anti Rebarb", Default = false,
+    Callback = function(v)
+        if v then
+            -- Find which room the local player is currently inside by checking
+            -- which room model's bounding box contains (or is closest to) the player.
+            local function getCurrentRoom()
+                local char = LP.Character
+                if not char then return nil end
+                local root = char:FindFirstChild("HumanoidRootPart")
+                if not root then return nil end
+                local pp = root.Position
+                local rooms = workspace:FindFirstChild("GameplayFolder") and workspace.GameplayFolder:FindFirstChild("Rooms")
+                if not rooms then return nil end
+
+                local bestRoom, bestDist = nil, math.huge
+                for _, room in ipairs(rooms:GetChildren()) do
+                    if room:IsA("Model") then
+                        -- Use GetBoundingBox to find the room's centre and size
+                        local ok, cf, size = pcall(function() return room:GetBoundingBox() end)
+                        if ok then
+                            -- Check if player is inside the bounding box (with a small margin)
+                            local local_pos = cf:PointToObjectSpace(pp)
+                            local half = size / 2
+                            if math.abs(local_pos.X) <= half.X + 10
+                            and math.abs(local_pos.Y) <= half.Y + 10
+                            and math.abs(local_pos.Z) <= half.Z + 10 then
+                                local dist = (cf.Position - pp).Magnitude
+                                if dist < bestDist then
+                                    bestDist = dist
+                                    bestRoom = room
+                                end
+                            end
+                        end
+                    end
+                end
+                -- Fallback: if no bounding-box match, just return the closest room
+                if not bestRoom then
+                    for _, room in ipairs(rooms:GetChildren()) do
+                        if room:IsA("Model") then
+                            local ok, cf = pcall(function() return room:GetPivot() end)
+                            if ok then
+                                local dist = (cf.Position - pp).Magnitude
+                                if dist < bestDist then bestDist = dist; bestRoom = room end
+                            end
+                        end
+                    end
+                end
+                return bestRoom
+            end
+
+            local equipRemote = game:GetService("ReplicatedStorage"):WaitForChild("Events"):WaitForChild("Equip")
+            local lastRebarbCheck = 0
+            local lastRebarbFire  = 0
+            local rebarbPresent   = false  -- true only when RebarRoot is in the current room
+
+            -- Check for Rebarb at 2Hz (cheap) — only fire remotes when actually detected
+            trackConnection("AntiRebarb", RunService.Heartbeat:Connect(function()
+                local now = tick()
+
+                -- Detection pass: every 0.5s check if RebarRoot exists in current room
+                if now - lastRebarbCheck >= 0.5 then
+                    lastRebarbCheck = now
+                    pcall(function()
+                        local room = getCurrentRoom()
+                        rebarbPresent = room ~= nil and room:FindFirstChild("RebarRoot") ~= nil
+                    end)
+                end
+
+                -- Only fire when Rebarb is present, and throttle to ~10Hz
+                if not rebarbPresent then return end
+                if now - lastRebarbFire < 0.1 then return end
+                lastRebarbFire = now
+
+                pcall(function()
+                    -- Re-equip so switching items doesn't break it
+                    equipRemote:FireServer("FlashBeaconHighGrade")
+                    local room = getCurrentRoom()
+                    if not room then return end
+                    local rebarRoot = room:FindFirstChild("RebarRoot")
+                    if not rebarRoot then rebarbPresent = false; return end
+                    local attackRemote = rebarRoot:FindFirstChild("Events") and rebarRoot.Events:FindFirstChild("Attack")
+                    if attackRemote then attackRemote:FireServer() end
+                end)
+            end))
+        else
+            removeConnection("AntiRebarb")
+        end
+    end,
+})
+
+--// ─── ANTI MODIFIERS GROUPBOX ───
+local AntiModBox = Tabs.Removal:AddRightGroupbox("Anti Modifiers")
+
+-- Special: Dozer — destroy workspace model AND nuke the PlayerGui Dozer screen
+AntiModBox:AddToggle("RemoveDozer",{Text="Remove Dozer",Default=false,Callback=function(v)
+    local function nukeDozerGui()
+        pcall(function()
+            local dozerGui = LP.PlayerGui:FindFirstChild("Dozer")
+            if dozerGui then dozerGui:Destroy() end
+        end)
+    end
+    local function dozerMatch(i) local n=i.Name:lower(); return n=="dozer" or n:find("^dozer_") or n:find("^dozer[%s]") end
+    if v then
+        -- Kill GUI immediately if already present
+        nukeDozerGui()
+        -- Watch for the GUI appearing (spawns when Dozer activates)
+        trackConnection("RemoveDozerGui", LP.PlayerGui.ChildAdded:Connect(function(c)
+            if c.Name=="Dozer" then task.wait(); pcall(function() c:Destroy() end) end
+        end))
+        startEntityCheckLoop("RemoveDozer", dozerMatch, workspace)
+    else
+        removeConnection("RemoveDozerGui")
+        stopEntityCheckLoop("RemoveDozer")
+    end
+end})
+
+-- Special: A200 — client-side entity; trick it into self-destructing by setting
+-- Main.Locker = true (the same check the script uses when the player hides in a locker),
+-- then also nil out LocalEntities.A200 and destroy the model directly as a fallback.
+AntiModBox:AddToggle("RemoveA200",{Text="Remove A-200",Default=false,Callback=function(v)
+    local function killA200()
+        pcall(function()
+            local main = require(LP.PlayerGui.Main.Client.MainClient)
+            -- Setting Locker=true makes A200's PathFindToPlayer loop self-destruct cleanly
+            if main then
+                main.Locker = true
+                task.delay(0.5, function() main.Locker = false end)
+                -- Also nil the LocalEntities reference so it doesn't re-path
+                if main.LocalEntities then main.LocalEntities.A200 = nil end
+            end
+        end)
+        -- Hard fallback: destroy any A200 model in workspace directly
+        pcall(function()
+            for _, inst in ipairs(workspace:GetChildren()) do
+                local n = inst.Name:lower()
+                if n == "a200" or n == "a-200" or n:find("^a200") then
+                    -- Stop the movement tween and unbind render steps before destroying
+                    game:GetService("RunService"):UnbindFromRenderStep("A200Detect")
+                    game:GetService("RunService"):UnbindFromRenderStep("playerDistance")
+                    inst:Destroy()
+                end
+            end
+        end)
+    end
+    if v then
+        -- Kill immediately if already present
+        killA200()
+        -- Watch for A200 appearing
+        trackConnection("RemoveA200", workspace.ChildAdded:Connect(function(inst)
+            local n = inst.Name:lower()
+            if n == "a200" or n == "a-200" or n:find("^a200") then
+                task.wait(0.1) -- let it finish parenting
+                killA200()
+            end
+        end))
+    else
+        removeConnection("RemoveA200")
+    end
+end})
+
+
+-- Remove GOM
+-- From decompiled script: GOM works via SummonGOM.OnClientInvoke — overwrite it with
+-- a no-op to block the jumpscare/damage sequence entirely. Also destroy ReplicatedStorage.GOMTimer
+-- to kill the countdown, and clear the GOMFrame in PlayerGui so no visuals linger.
+AntiModBox:AddToggle("RemoveGOM", {Text="Remove GOM", Default=false, Callback=function(v)
+    if v then
+        -- Overwrite the client invoke handler so GOM's sequence never runs
+        pcall(function()
+            local summonGOM = game:GetService("ReplicatedStorage"):FindFirstChild("Events") and
+                              game:GetService("ReplicatedStorage").Events:FindFirstChild("SummonGOM")
+            if summonGOM then
+                trackConnection("RemoveGOMInvoke", summonGOM.OnClientEvent:Connect(function() end))
+            end
+        end)
+        -- Destroy the GOMTimer in ReplicatedStorage to stop the countdown ticking
+        pcall(function()
+            local gomTimer = game:GetService("ReplicatedStorage"):FindFirstChild("GOMTimer")
+            if gomTimer then gomTimer:Destroy() end
+        end)
+        -- Watch for GOMTimer being re-added (GOM can respawn across rooms)
+        trackConnection("RemoveGOMTimer", game:GetService("ReplicatedStorage").ChildAdded:Connect(function(c)
+            if c.Name == "GOMTimer" then task.wait(); pcall(function() c:Destroy() end) end
+        end))
+        -- Hide the GOMFrame in PlayerGui so no visuals show
+        pcall(function()
+            local gomFrame = LP.PlayerGui:FindFirstChild("Main")
+            if gomFrame then
+                gomFrame = gomFrame:FindFirstChild("GOMFrame")
+                if gomFrame then gomFrame.Visible = false end
+            end
+        end)
+        -- Also destroy any GOM model in workspace
+        startEntityCheckLoop("RemoveGOM", function(i)
+            local n = i.Name:lower()
+            return n == "gom" or n:find("^gom_") or n:find("^gom[%s]")
+        end, workspace)
+    else
+        removeConnection("RemoveGOMInvoke")
+        removeConnection("RemoveGOMTimer")
+        stopEntityCheckLoop("RemoveGOM")
+        -- Restore GOMFrame visibility
+        pcall(function()
+            local gomFrame = LP.PlayerGui:FindFirstChild("Main")
+            if gomFrame then
+                gomFrame = gomFrame:FindFirstChild("GOMFrame")
+                if gomFrame then gomFrame.Visible = true end
+            end
+        end)
+    end
+end})
+
+-- Remove Popups
+-- Destroys LP.PlayerGui.Main.Popups and watches for it to be re-added.
+AntiModBox:AddToggle("RemovePopups", {Text="Remove Popups", Default=false, Callback=function(v)
+    local function nukePopups()
+        pcall(function()
+            local main = LP.PlayerGui:FindFirstChild("Main")
+            if not main then return end
+            local popups = main:FindFirstChild("Popups")
+            if popups then popups:Destroy() end
+        end)
+    end
+    if v then
+        nukePopups()
+        -- Watch for Popups being re-added to Main
+        trackConnection("RemovePopupsWatch", LP.PlayerGui.DescendantAdded:Connect(function(c)
+            if c.Name == "Popups" then task.wait(); pcall(function() c:Destroy() end) end
+        end))
+    else
+        removeConnection("RemovePopupsWatch")
+    end
+end})
+
+-- Anti Elkman
+-- Blocks the Elkman RemoteEvent from firing on the client, and destroys any
+-- Elkman instance found in workspace via the standard connection loop.
+-- Anti Elkman
+AntiModBox:AddToggle("AntiElkman", {
+    Text = "Anti Elkman", Default = false,
+    Callback = function(v)
+        if v then
+            pcall(function()
+                local elkman = game:GetService("ReplicatedStorage").Events:FindFirstChild("Elkman")
+                if elkman then elkman:Destroy() end
+            end)
+        end
+    end,
+})
+
+-- Anti Doppel
+-- From decompiled code: Doppel fires ReplicatedStorage.Events.Doppel on the client
+-- to trigger Spawn(), and renders itself into a ViewportFrame in PlayerGui called "Doppel".
+-- We block the remote, destroy the ViewportFrame UI, and patch the moveFunction back
+-- so controls aren't inverted if Contact() already fired before the toggle was on.
+AntiModBox:AddToggle("AntiDoppel", {
+    Text = "Anti Doppel", Default = false,
+    Callback = function(v)
+        if v then
+            pcall(function()
+                local events = game:GetService("ReplicatedStorage"):WaitForChild("Events", 5)
+                if events then
+                    local doppelRemote = events:FindFirstChild("Doppel")
+                    if doppelRemote then
+                        -- Intercept the OnClientEvent so Doppel.Spawn() never runs
+                        trackConnection("AntiDoppelRemote", doppelRemote.OnClientEvent:Connect(function()
+                            -- Immediately clean up the ViewportFrame Doppel renders into
+                            pcall(function()
+                                local doppelGui = LP.PlayerGui:FindFirstChild("Main")
+                                if doppelGui then
+                                    local doppelFrame = doppelGui.UI.Parent:FindFirstChild("Doppel")
+                                    if doppelFrame then
+                                        local vp = doppelFrame:FindFirstChildWhichIsA("ViewportFrame")
+                                        if vp then vp.CurrentCamera = nil end
+                                    end
+                                end
+                            end)
+                            -- Restore movement controls in case Contact() already inverted them
+                            pcall(function()
+                                local controls = require(LP:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule")):GetControls()
+                                controls.moveFunction = LP.Move
+                            end)
+                        end))
+                    end
+                end
+            end)
+            -- Also watch workspace for any Doppel model and destroy it
+            startEntityCheckLoop("AntiDoppel", function(i)
+                local n = i.Name:lower()
+                return n == "doppel" or n:find("^doppel") or n == "doppelganger"
+            end, workspace)
+        else
+            removeConnection("AntiDoppelRemote")
+            stopEntityCheckLoop("AntiDoppel")
+        end
+    end,
+})
+
+-- Remove Conundrum
+-- Standard removal via workspace connections, same pattern as other entities.
+AntiModBox:AddToggle("RemoveConundrum", {
+    Text = "Remove Conundrum", Default = false,
+    Callback = function(v)
+        if v then
+            startEntityCheckLoop("RemoveConundrum", function(i)
+                local n = i.Name:lower()
+                return n == "conundrum" or n:find("^conundrum")
+            end, workspace)
+        else
+            stopEntityCheckLoop("RemoveConundrum")
+        end
+    end,
+})
+
+AntiModBox:AddToggle("AntiDoombringer", {
+    Text = "Auto Silence Doombringer", Default = false,
+    Callback = function(v)
+        if v then
+            pcall(function()
+                local events = game:GetService("ReplicatedStorage"):WaitForChild("Events", 5)
+                if not events then return end
+
+                local activateRemote  = events:FindFirstChild("Activate")
+                local equipRemote     = events:FindFirstChild("Equip")
+                local toggleScream    = events:FindFirstChild("DoombringerToggleScream")
+                local squeakRemote    = events:FindFirstChild("DoombringerSqueak")
+
+                local screamTimeRemote = events:FindFirstChild("RequestDoombringerScreamTime")
+
+                local function silenceDoombringer()
+                    -- Must be holding Doombringer for Activate to register on the server.
+                    -- Equip first, then fire Activate — same as the player left-clicking.
+                    pcall(function()
+                        if equipRemote then equipRemote:FireServer("Doombringer") end
+                    end)
+                    -- Invoke RequestDoombringerScreamTime with the local player — mirrors
+                    -- what UnequipFunction does to sync scream state server-side.
+                    pcall(function()
+                        if screamTimeRemote then screamTimeRemote:InvokeServer(LP) end
+                    end)
+                    task.wait(0.05) -- small gap so equip/sync processes before activate
+                    if activateRemote then
+                        pcall(function() activateRemote:FireServer("Doombringer") end)
+                    end
+                end
+
+                -- Watch workspace for a Doombringer model/part being held by the local
+                -- player and auto-equip+silence as soon as it appears.
+                trackConnection("AntiDoombringerDetect", workspace.DescendantAdded:Connect(function(inst)
+                    local n = inst.Name:lower()
+                    if n == "doombringer" or n:find("doombringer") then
+                        task.wait(0.1) -- let the item finish loading
+                        pcall(function()
+                            if equipRemote then equipRemote:FireServer("Doombringer") end
+                        end)
+                    end
+                end))
+
+                -- Primary: intercept the scream toggle remote
+                if toggleScream then
+                    trackConnection("AntiDoombringerScream", toggleScream.OnClientEvent:Connect(function(screaming)
+                        if screaming then
+                            -- Fire immediately, then again after a short delay as a safety net
+                            silenceDoombringer()
+                            task.delay(0.15, silenceDoombringer)
+                        end
+                    end))
+                end
+
+                -- Secondary: DoombringerSqueak fires when Pandemonium interrupts the scream
+                -- server-side — silence in that case too just to be safe
+                if squeakRemote then
+                    trackConnection("AntiDoombringerSqueak", squeakRemote.OnClientEvent:Connect(function()
+                        silenceDoombringer()
+                    end))
+                end
+            end)
+        else
+            removeConnection("AntiDoombringerDetect")
+            removeConnection("AntiDoombringerScream")
+            removeConnection("AntiDoombringerSqueak")
+        end
+    end,
+})
+
+AntiModBox:AddToggle("AntiHotPotato", {Text="Anti Hot Potato", Default=false, Callback=function(v)
+    if v then
+        local crouchRemote = game:GetService("ReplicatedStorage"):FindFirstChild("CrouchEvent")
+        if not crouchRemote then
+            -- Wait up to 10s in case it hasn't replicated yet
+            task.spawn(function()
+                crouchRemote = game:GetService("ReplicatedStorage"):WaitForChild("CrouchEvent", 10)
+                if crouchRemote and Toggles.AntiHotPotato and Toggles.AntiHotPotato.Value then
+                    trackConnection("AntiHotPotato", RunService.Heartbeat:Connect(function()
+                        pcall(function() crouchRemote:FireServer(true) end)
+                    end))
+                end
+            end)
+        else
+            trackConnection("AntiHotPotato", RunService.Heartbeat:Connect(function()
+                pcall(function() crouchRemote:FireServer(true) end)
+            end))
+        end
+    else
+        removeConnection("AntiHotPotato")
+    end
+end})
+
+-- Anti Restless Dreams (formerly Anti Fog)
+AntiModBox:AddToggle("AntiRestlessDreams", {Text="Anti Restless Dreams", Default=false, Callback=function(v)
+    local function nukeFog()
+        pcall(function()
+            local chars = workspace:FindFirstChild("GameplayFolder") and workspace.GameplayFolder:FindFirstChild("Characters")
+            if not chars then return end
+            local pm = chars:FindFirstChild(LP.Name)
+            if not pm then return end
+            local root = pm:FindFirstChild("HumanoidRootPart")
+            if not root then return end
+            local fogParticle = root:FindFirstChild("FogParticle")
+            if fogParticle then
+                local playerFog = fogParticle:FindFirstChild("PlayerFog")
+                if playerFog then playerFog:Destroy() end
+            end
+        end)
+    end
+    if v then
+        nukeFog()
+        trackConnection("AntiFogWatch", workspace.DescendantAdded:Connect(function(c)
+            if c.Name == "PlayerFog" then task.wait(); pcall(function() c:Destroy() end) end
+        end))
+    else
+        removeConnection("AntiFogWatch")
+    end
+end})
+
+-- Anti Interloper
+AntiModBox:AddToggle("AntiInterloper", {Text="Anti Interloper", Default=false, Callback=function(v)
+    if v then
+        pcall(function()
+            local se = game:GetService("ReplicatedStorage").Events:FindFirstChild("SpecialEffect")
+            if se then se:Destroy() end
+        end)
+    end
+end})
+
+-- Anti Rat Race
+AntiModBox:AddToggle("AntiRatRace", {Text="Anti Rat Race", Default=false, Callback=function(v)
+    if v then
+        local _rrChaseActive = false  -- true while a chase entity is present
+        local _rrChaseEntities = {}   -- tracks active chase entities
+
+        local function restoreHealth()
+            pcall(function()
+                local pf = LP:FindFirstChild("PlayerFolder")
+                if not pf or pf:FindFirstChild("Health") then return end
+                local h = Instance.new("IntValue")
+                h.Name = "Health"; h.Value = 100; h.Parent = pf
+            end)
+        end
+
+        local function nukeHealth()
+            pcall(function()
+                local pf = LP:FindFirstChild("PlayerFolder")
+                if not pf then return end
+                local health = pf:FindFirstChild("Health")
+                if health then health:Destroy() end
+            end)
+        end
+
+        local function freezePlayer()
+            pcall(function()
+                local char = LP.Character; if not char then return end
+                local hum = char:FindFirstChild("Humanoid")
+                if hum then hum.WalkSpeed = 0; hum.JumpPower = 0 end
+            end)
+        end
+
+        local function unfreezePlayer()
+            pcall(function()
+                local char = LP.Character; if not char then return end
+                local hum = char:FindFirstChild("Humanoid")
+                if hum then hum.WalkSpeed = 16; hum.JumpPower = 50 end
+            end)
+        end
+
+        local function onChaseEntityGone()
+            -- Only return if all chase entities are gone
+            if next(_rrChaseEntities) ~= nil then return end
+            _rrChaseActive = false
+            -- Delete health again, unfreeze, trigger auto-hide return
+            nukeHealth()
+            unfreezePlayer()
+            if AH.isHiding then ahStopHiding() end
+        end
+
+        local function onChaseEntitySpawned(entity, label)
+            if _rrChaseEntities[entity] then return end
+            _rrChaseEntities[entity] = true
+            if not _rrChaseActive then
+                _rrChaseActive = true
+                -- Restore health so the game can read it during the chase (prevents insta-death)
+                restoreHealth()
+                -- Freeze the player so walking damage can't accumulate
+                freezePlayer()
+                -- Trigger auto-hide if it's enabled
+                if Toggles.AutoHide and Toggles.AutoHide.Value then
+                    ahStartHiding()
+                end
+                Library:Notify("[RatRace] "..label.." — health restored, frozen", 4)
+            end
+            -- Watch for this entity despawning
+            task.spawn(function()
+                entity.Destroying:Wait()
+                _rrChaseEntities[entity] = nil
+                task.wait(0.5)
+                onChaseEntityGone()
+            end)
+        end
+
+        -- Watch workspace for chase entities (same set as AutoHide)
+        trackConnection("AntiRatRaceChase", workspace.DescendantAdded:Connect(function(entity)
+            if not entity:IsA("Part") then return end
+            local label = AutoHideEntities[entity.Name]
+            if not label then
+                -- Fuzzy check for variants
+                local nl = entity.Name:lower()
+                if nl:find("^carnation") then label = "Carnation"
+                elseif nl:find("^a200$") or nl:find("^a-200$") then label = "A-200"
+                elseif nl:find("^bleach") then label = "Bleach"
+                elseif nl:find("anglemonium") then label = "Anglemonium"
+                elseif nl:find("frogermonium") then label = "Frogermonium"
+                elseif nl:find("pinkimonium") then label = "Pinkimonium"
+                elseif nl:find("pandesmoker") then label = "Pandesmoker"
+                elseif nl:find("blitzemonium") then label = "Blitzemonium"
+                elseif nl:find("^doppel") then label = "Doppel"
+                end
+            end
+            if label then onChaseEntitySpawned(entity, label) end
+        end))
+
+        -- Always pin TotalDamage to 0
+        trackConnection("AntiRatRaceDamage", RunService.Heartbeat:Connect(function()
+            pcall(function()
+                local pf = LP:FindFirstChild("PlayerFolder")
+                if not pf then return end
+                local dmg = pf:FindFirstChild("TotalDamage")
+                if dmg and dmg.Value ~= 0 then dmg.Value = 0 end
+            end)
+        end))
+
+        -- Watch for Health being re-added while no chase is active — delete it
+        trackConnection("AntiRatRaceHealthAdded", LP.DescendantAdded:Connect(function(inst)
+            if inst.Name == "Health" and not _rrChaseActive then
+                task.wait(); pcall(function() inst:Destroy() end)
+            end
+        end))
+
+        -- Initial state: no chase active, delete health, pin damage
+        nukeHealth()
+    else
+        removeConnection("AntiRatRaceChase")
+        removeConnection("AntiRatRaceDamage")
+        removeConnection("AntiRatRaceHealthAdded")
+        -- Restore everything on disable
+        pcall(function()
+            local char = LP.Character
+            if char then
+                local hum = char:FindFirstChild("Humanoid")
+                if hum then hum.WalkSpeed = 16; hum.JumpPower = 50 end
+            end
+        end)
+        pcall(function()
+            local pf = LP:FindFirstChild("PlayerFolder")
+            if not pf then return end
+            if not pf:FindFirstChild("Health") then
+                local h = Instance.new("IntValue")
+                h.Name = "Health"; h.Value = 100; h.Parent = pf
+            end
+        end)
+    end
+end})
+
+-- Remove Carnation
+AntiModBox:AddToggle("RemoveCarnation", {Text="Remove Carnation", Default=false, Callback=function(v)
+    if v then
+        startEntityCheckLoop("RemoveCarnation", function(i)
+            local n = i.Name:lower()
+            return n == "carnation" or n:find("^carnation")
+        end, workspace)
+    else
+        stopEntityCheckLoop("RemoveCarnation")
+    end
+end})
+
+AntiModBox:AddToggle("AntiFreezeFrame", {Text="Anti Freeze Frame", Default=false, Callback=function(v)
+    if v then
+        pcall(function()
+            local freezeGui = LP.PlayerGui:FindFirstChild("FreezeFrameEffect")
+            if freezeGui then freezeGui:Destroy() end
+        end)
+    end
+end})
+
+
+--// ─── GAMEPLAY TAB ───
+local PlayerBox = Tabs.Gameplay:AddLeftGroupbox("Player")
+local MiscBox   = Tabs.Gameplay:AddRightGroupbox("Misc")
+
+-- Infinite Stamina
+PlayerBox:AddToggle("InfiniteStamina",{Text="Infinite Stamina",Default=false,Callback=function(v)
+    if v then trackConnection("InfiniteStamina", RunService.RenderStepped:Connect(function()
+        pcall(function() require(LP.PlayerGui.Main.Client.MainClient.Sprinting).Stamina=100 end)
+    end)) else removeConnection("InfiniteStamina") end
+end})
+
+-- Speed (metatable bypass)
+local mt = getrawmetatable(game); setreadonly(mt,false)
+local oldIndex = mt.__index
+mt.__index = newcclosure(function(self,key) if key=="WalkSpeed" then return end; return oldIndex(self,key) end)
+setreadonly(mt,true)
+
+local SpeedValue,SpeedEnabled = 50,false
+PlayerBox:AddToggle("EnableSpeed",{Text="Enable Speed",Default=false,Callback=function(v)
+    SpeedEnabled=v
+    if v then trackConnection("SpeedConn", RunService.RenderStepped:Connect(function()
+        pcall(function() if LP.Character and LP.Character:FindFirstChild("Humanoid") then LP.Character.Humanoid.WalkSpeed=SpeedValue end end)
+    end)) else
+        removeConnection("SpeedConn")
+        pcall(function() if LP.Character and LP.Character:FindFirstChild("Humanoid") then LP.Character.Humanoid.WalkSpeed=16 end end)
+    end
+end})
+PlayerBox:AddSlider("SpeedSlider",{Text="Walk Speed",Default=50,Min=16,Max=100,Rounding=0,Callback=function(v) SpeedValue=v end})
+
+-- Swim Speed
+local SwimSpeedValue,SwimEnabled = 50,false
+PlayerBox:AddToggle("EnableSwimSpeed",{Text="Enable Swim Speed",Default=false,Callback=function(v)
+    SwimEnabled=v
+    if v then trackConnection("SwimConn", RunService.RenderStepped:Connect(function()
+        pcall(function()
+            if not LP.Character then return end
+            local hum=LP.Character:FindFirstChild("Humanoid"); local root=LP.Character:FindFirstChild("HumanoidRootPart")
+            if not hum or not root then return end
+            if hum.PlatformStand then
+                local vel = hum.MoveDirection*SwimSpeedValue + Vector3.new(0,workspace.Camera.CFrame.LookVector.Y*SwimSpeedValue,0)
+                root.CFrame = root.CFrame + vel*0.016
+            end
+        end)
+    end)) else removeConnection("SwimConn") end
+end})
+PlayerBox:AddSlider("SwimSpeedSlider",{Text="Swim Speed",Default=50,Min=10,Max=100,Rounding=0,Callback=function(v) SwimSpeedValue=v end})
+
+-- FOV
+local FOVValue = 90
+PlayerBox:AddToggle("EnableFOV",{Text="Enable FOV",Default=false,Callback=function(v)
+    if v then trackConnection("FOVConn", RunService.RenderStepped:Connect(function() pcall(function() workspace.Camera.FieldOfView=FOVValue end) end))
+    else removeConnection("FOVConn"); workspace.Camera.FieldOfView=90 end
+end})
+PlayerBox:AddSlider("FOVSlider",{Text="FOV Value",Default=90,Min=90,Max=120,Rounding=0,Suffix="°",Callback=function(v) FOVValue=v end})
+
+-- Fly
+local FlyEnabled,FlySpeed,flyBodyVel,flyBodyGyro = false,40,nil,nil
+local function cleanFlyBodies() if flyBodyVel then flyBodyVel:Destroy(); flyBodyVel=nil end if flyBodyGyro then flyBodyGyro:Destroy(); flyBodyGyro=nil end end
+
+PlayerBox:AddToggle("EnableFly",{Text="Fly",Default=false,Callback=function(v)
+    FlyEnabled=v
+    if v then
+        local char=LP.Character; if not char then return end
+        local root=char:FindFirstChild("HumanoidRootPart"); local hum=char:FindFirstChild("Humanoid")
+        if not root or not hum then return end
+        cleanFlyBodies()
+        flyBodyVel=Instance.new("BodyVelocity"); flyBodyVel.Velocity=Vector3.zero; flyBodyVel.MaxForce=Vector3.new(1e6,1e6,1e6); flyBodyVel.P=1e4; flyBodyVel.Parent=root
+        flyBodyGyro=Instance.new("BodyGyro"); flyBodyGyro.MaxTorque=Vector3.new(1e6,1e6,1e6); flyBodyGyro.P=1e4; flyBodyGyro.D=100; flyBodyGyro.CFrame=root.CFrame; flyBodyGyro.Parent=root
+        hum.PlatformStand=true; _Flags.FlyActive=true
+        trackConnection("FlyConn", RunService.RenderStepped:Connect(function()
+            if not FlyEnabled then return end
+            local r=LP.Character and LP.Character:FindFirstChild("HumanoidRootPart"); if not r then return end
+            local cam=workspace.CurrentCamera; local dir=Vector3.zero
+            local function key(k) return UserInputService:IsKeyDown(k) end
+            if key(Enum.KeyCode.W) or key(Enum.KeyCode.Up) then dir=dir+cam.CFrame.LookVector end
+            if key(Enum.KeyCode.S) or key(Enum.KeyCode.Down) then dir=dir-cam.CFrame.LookVector end
+            if key(Enum.KeyCode.A) or key(Enum.KeyCode.Left) then dir=dir-cam.CFrame.RightVector end
+            if key(Enum.KeyCode.D) or key(Enum.KeyCode.Right) then dir=dir+cam.CFrame.RightVector end
+            if key(Enum.KeyCode.Space) or key(Enum.KeyCode.ButtonA) then dir=dir+Vector3.new(0,1,0) end
+            if key(Enum.KeyCode.LeftControl) or key(Enum.KeyCode.ButtonB) then dir=dir-Vector3.new(0,1,0) end
+            if dir.Magnitude>0 then dir=dir.Unit end
+            flyBodyVel.Velocity=dir*FlySpeed; flyBodyGyro.CFrame=cam.CFrame
+        end))
+    else
+        _Flags.FlyActive=false; removeConnection("FlyConn")
+        pcall(function() local h=LP.Character and LP.Character:FindFirstChild("Humanoid"); if h then h.PlatformStand=false end end)
+        cleanFlyBodies()
+    end
+end})
+PlayerBox:AddLabel("Fly Keybind"):AddKeyPicker("FlyKeybind",{Default="G",Mode="Toggle",Text="Toggle Fly",NoUI=false,SyncToggleState=false})
+Options.FlyKeybind:OnClick(function()
+    if Toggles.EnableFly then Toggles.EnableFly:SetValue(not Toggles.EnableFly.Value) end
+end)
+PlayerBox:AddSlider("FlySpeedSlider",{Text="Fly Speed",Default=40,Min=5,Max=150,Rounding=0,Callback=function(v) FlySpeed=v end})
+
+-- Infinite Jump
+local function getPressureHumanoid()
+    local chars=workspace:FindFirstChild("GameplayFolder") and workspace.GameplayFolder:FindFirstChild("Characters")
+    if not chars then return nil end
+    local pm=chars:FindFirstChild(LP.Name); if not pm then return nil end
+    return pm:FindFirstChildOfClass("Humanoid")
+end
+
+local function doInfJump()
+    pcall(function()
+        local function fire(hum) if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end end
+        fire(getPressureHumanoid())
+        local char=LP.Character; if char then fire(char:FindFirstChildOfClass("Humanoid")) end
+    end)
+end
+
+PlayerBox:AddToggle("EnableInfJump",{Text="Infinite Jump",Default=false,Callback=function(v)
+    if v then
+        trackConnection("InfJumpPower", RunService.RenderStepped:Connect(function()
+            pcall(function()
+                local function patch(hum)
+                    if not hum then return end
+                    hum:SetStateEnabled(Enum.HumanoidStateType.Jumping,true)
+                    hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown,true)
+                    hum.UseJumpPower=true; hum.JumpPower=50
+                end
+                patch(getPressureHumanoid())
+                local char=LP.Character; if char then patch(char:FindFirstChildOfClass("Humanoid")) end
+            end)
+        end))
+    else
+        removeConnection("InfJumpPower")
+        pcall(function()
+            local function restore(hum)
+                if not hum then return end
+                hum:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
+                hum.UseJumpPower = true
+                hum.JumpPower = 0
+            end
+            restore(getPressureHumanoid())
+            local char=LP.Character; if char then restore(char:FindFirstChildOfClass("Humanoid")) end
+        end)
+    end
+end})
+
+-- FIX #2: Use OnClick instead of Callback for keybind-triggered actions.
+-- Callback fires on toggle state change (true/false), OnClick fires only when the key is pressed.
+PlayerBox:AddLabel("Jump Keybind"):AddKeyPicker("JumpKeybind",{Default="N",Mode="Toggle",Text="Infinite Jump",NoUI=false,SyncToggleState=false,Callback=function(_) end})
+Options.JumpKeybind:OnClick(function()
+    if Toggles.EnableInfJump and Toggles.EnableInfJump.Value then doInfJump() end
+end)
+
+-- Misc
+MiscBox:AddToggle("Noclip",{Text="Noclip",Default=false,Risky=true,Callback=function(v)
+    if v then
+        -- Save each part's original CanCollide before we touch anything
+        local _noclipOriginals = {}
+        pcall(function()
+            if LP.Character then
+                for _, p in ipairs(LP.Character:GetDescendants()) do
+                    if p:IsA("BasePart") then
+                        _noclipOriginals[p] = p.CanCollide
+                    end
+                end
+            end
+        end)
+        trackConnection("Noclip", RunService.Stepped:Connect(function()
+            pcall(function()
+                if LP.Character then
+                    for _, p in ipairs(LP.Character:GetDescendants()) do
+                        if p:IsA("BasePart") then p.CanCollide = false end
+                    end
+                end
+            end)
+        end))
+        -- Store originals so disable can restore properly
+        Toggles.Noclip._originals = _noclipOriginals
+    else
+        removeConnection("Noclip")
+        -- Restore each part to its original CanCollide, not blindly true
+        pcall(function()
+            local originals = Toggles.Noclip._originals or {}
+            if LP.Character then
+                for _, p in ipairs(LP.Character:GetDescendants()) do
+                    if p:IsA("BasePart") then
+                        -- Use saved original, fall back to false (safer than true for most parts)
+                        p.CanCollide = originals[p] ~= nil and originals[p] or false
+                    end
+                end
+            end
+            Toggles.Noclip._originals = nil
+        end)
+    end
+end})
+
+-- FIX #2: Same fix for Noclip keybind — use OnClick instead of Callback.
+MiscBox:AddLabel("Noclip Keybind"):AddKeyPicker("NoclipKeybind",{Default="X",Mode="Toggle",Text="Toggle Noclip",NoUI=false,SyncToggleState=false,Callback=function(_) end})
+Options.NoclipKeybind:OnClick(function()
+    if Toggles.Noclip then Toggles.Noclip:SetValue(not Toggles.Noclip.Value) end
+end)
+
+MiscBox:AddToggle("MobileUI",{Text="Mobile UI",Default=false,Callback=function(v)
+    if v then
+        if not (UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled) then
+            Library:Notify("Mobile UI is for mobile players only",4)
+            task.defer(function() Toggles.MobileUI:SetValue(false) end); return
+        end
+        createMobileHideGui()
+    else destroyMobileHideGui() end
+end})
+MiscBox:AddToggle("LockMobileHideReturn",{Text="Lock Mobile Buttons",Default=false,Callback=function(v) mobileHideLocked=v end})
+MiscBox:AddButton({Text="Load Infinite Yield",Func=function()
+    pcall(function() loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"))() end)
+end})
+
+MiscBox:AddToggle("AntiVoid",{Text="Anti Void",Default=false,Callback=function(v)
+    if v then
+        local lastSafePos,lastSaveTime,recovering=nil,0,false
+        local rp=RaycastParams.new(); rp.FilterType=Enum.RaycastFilterType.Exclude
+        trackConnection("AntiVoid", RunService.Heartbeat:Connect(function()
+            local char=LP.Character; if not char then return end
+            local root=char:FindFirstChild("HumanoidRootPart"); if not root then return end
+            local pos=root.Position
+            if pos.Y < -500 then
+                if lastSafePos and not recovering then
+                    recovering=true
+                    if Toggles.Noclip and Toggles.Noclip.Value then Toggles.Noclip:SetValue(false) end
+                    root.CFrame=CFrame.new(lastSafePos); Library:Notify("Anti-void triggered!",3)
+                    task.delay(3,function() recovering=false end)
+                end
+                return
+            end
+            local now=tick()
+            if now-lastSaveTime>=2 then
+                rp.FilterDescendantsInstances={char}
+                local ray=workspace:Raycast(pos,Vector3.new(0,-20,0),rp)
+                if ray then lastSaveTime=now; lastSafePos=pos end
+            end
+        end))
+    else removeConnection("AntiVoid") end
+end})
+
+MiscBox:AddButton({Text="Fix Hitbox",Func=function()
+    pcall(function()
+        local chars=workspace:FindFirstChild("GameplayFolder") and workspace.GameplayFolder:FindFirstChild("Characters")
+        if not chars then Library:Notify("Characters folder not found",4); return end
+        local pm=chars:FindFirstChild(LP.Name); if not pm then Library:Notify("Your character wasn't found in Characters",4); return end
+        local hum=pm:FindFirstChildOfClass("Humanoid"); if not hum then Library:Notify("Humanoid not found",4); return end
+        hum.HipHeight=1.8; Library:Notify("Hitbox fixed!",3)
+    end)
+end})
+
+MiscBox:AddToggle("ChaseNoclipLock",{Text="Noclip Lock",Default=false,Callback=function(v)
+    if v then
+        local rooms=workspace:FindFirstChild("GameplayFolder") and workspace.GameplayFolder:FindFirstChild("Rooms")
+        local function isChaseActive() return rooms and (rooms:FindFirstChild("ChaseStart")~=nil or rooms:FindFirstChild("ChaseEnd")~=nil) end
+        local function enforceLock()
+            if isChaseActive() then
+                if Toggles.Noclip and Toggles.Noclip.Value then Toggles.Noclip:SetValue(false); Library:Notify("Noclip disabled — chase in progress!",4) end
+                trackConnection("ChaseNoclipHook", Toggles.Noclip.OnChanged:Connect(function(nv)
+                    if nv and isChaseActive() then task.defer(function() Toggles.Noclip:SetValue(false); Library:Notify("Can't use noclip during a chase!",3) end) end
+                end))
+            else removeConnection("ChaseNoclipHook") end
+        end
+        if not rooms then Library:Notify("GameplayFolder.Rooms not found",4); return end
+        enforceLock()
+        trackConnection("ChaseNoclipWatch", rooms.ChildAdded:Connect(function(c) if c.Name=="ChaseStart" or c.Name=="ChaseEnd" then enforceLock() end end))
+        trackConnection("ChaseNoclipWatchRemoved", rooms.ChildRemoved:Connect(function(c) if c.Name=="ChaseStart" or c.Name=="ChaseEnd" then task.delay(0.5,enforceLock) end end))
+    else removeConnection("ChaseNoclipWatch"); removeConnection("ChaseNoclipWatchRemoved"); removeConnection("ChaseNoclipHook") end
+end})
+
+
+-- Anti Hot Potato
+-- Hot Potato forces the player to crouch. Fires CrouchEvent(true) on a loop
+-- to keep the crouch state satisfied so the penalty never applies.
+
+-- FIX #2: Same fix for ForceReturn keybind — use OnClick.
+Options.ForceReturnKeybind:OnClick(function() ahForceReturn() end)
+
+
+--// ─── UI TAB ───
+local MenuGroup = Tabs.UI:AddLeftGroupbox("Customize")
+MenuGroup:AddToggle("ShowCustomCursor",{Text="Custom Cursor",Default=true,Callback=function(v) Library.ShowCustomCursor=v end})
+MenuGroup:AddDivider()
+
+-- FIX #3: MenuKeybind must be registered as a KeyPicker (via AddLabel:AddKeyPicker) BEFORE
+-- SaveManager:BuildConfigSection so SaveManager can find and persist it. It is still excluded
+-- from per-config saves via SetIgnoreIndexes so it stays global across all configs.
+-- FIX #1: Remove the ToggleKeybind from CreateWindow — the library owns the keybind through
+-- Library.ToggleKeybind = Options.MenuKeybind (set below). Setting it in CreateWindow AND via
+-- ToggleKeybind causes a double-registration that produces the RemoteFunction parent error.
+MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind",{Default="RightControl",NoUI=true,Text="Menu keybind"})
+
+-- This line is what actually wires the keybind to the menu toggle. Must come after the picker.
+Library.ToggleKeybind = Options.MenuKeybind
+
+MenuGroup:AddButton({Text="Unload",Risky=true,Func=function()
+    for _,t in pairs(Toggles) do pcall(function() if t.Value then t:SetValue(false) end end) end
+    task.wait(0.2); Library:Unload()
+end})
+
+ThemeManager:SetLibrary(Library)
+SaveManager:SetLibrary(Library)
+SaveManager:IgnoreThemeSettings()
+
+-- MenuKeybind is intentionally NOT in SetIgnoreIndexes anymore.
+-- Keeping it there caused it to be skipped from all saves entirely, so it
+-- never persisted. The library handles it correctly as long as it's written.
+SaveManager:SetIgnoreIndexes({})
+SaveManager:SetFolder("PressureLustraNew")
+
+-- BuildConfigSection must come after ALL Options/Toggles/KeyPickers are registered
+SaveManager:BuildConfigSection(Tabs.UI)
+ThemeManager:ApplyToTab(Tabs.UI)
+
+-- Auto-load whichever config was marked for autoload
+SaveManager:LoadAutoloadConfig()
+
+Library:Notify("Lustra loaded!", 4)
