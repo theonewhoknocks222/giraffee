@@ -24,6 +24,7 @@ local Tabs = {
     ESP      = Window:AddTab("ESP",             "eye"),
     Removal  = Window:AddTab("Remove Entities", "trash"),
     Gameplay = Window:AddTab("Gameplay",        "zap"),
+    Admin    = Window:AddTab("Admin",           "shield"),
     UI       = Window:AddTab("UI",              "settings"),
 }
 
@@ -2068,5 +2069,165 @@ ThemeManager:ApplyToTab(Tabs.UI)
 
 -- Auto-load whichever config was marked for autoload
 SaveManager:LoadAutoloadConfig()
+
+--// ─── ADMIN TAB ───
+-- Gated by adminWhitelist in whitelist.json on GitHub.
+-- Only user IDs listed under "adminWhitelist" get access.
+task.spawn(function()
+    local WHITELIST_URL = "https://raw.githubusercontent.com/RadiantSkullz/test/refs/heads/main/whitelist.json"
+    local isAdmin = false
+
+    pcall(function()
+        local raw = game:HttpGet(WHITELIST_URL)
+        local data = game:GetService("HttpService"):JSONDecode(raw)
+        for _, id in ipairs(data.adminWhitelist or {}) do
+            if id == LP.UserId then isAdmin = true; break end
+        end
+    end)
+
+    local AdminLeft  = Tabs.Admin:AddLeftGroupbox("Players")
+    local AdminRight = Tabs.Admin:AddRightGroupbox("Actions")
+
+    if not isAdmin then
+        AdminLeft:AddLabel("You do not have admin access.", true)
+        return
+    end
+
+    -- ── Player list helpers ──
+    local function getPlayerList()
+        local names = {}
+        for _, p in ipairs(game:GetService("Players"):GetPlayers()) do
+            if p ~= LP then names[#names+1] = p.Name end
+        end
+        if #names == 0 then names[1] = "(no other players)" end
+        return names
+    end
+
+    local function getPlayerByName(name)
+        return game:GetService("Players"):FindFirstChild(name)
+    end
+
+    local function getCharacterRoot(player)
+        local char = player and player.Character
+        return char and char:FindFirstChild("HumanoidRootPart")
+    end
+
+    -- ── Player dropdown ──
+    AdminLeft:AddDropdown("AdminPlayerSelect", {
+        Values = getPlayerList(),
+        Default = 1,
+        Multi = false,
+        Text = "Select Player",
+        Callback = function(_) end,
+    })
+
+    AdminLeft:AddButton({Text="Refresh Players", Func=function()
+        local list = getPlayerList()
+        if Options.AdminPlayerSelect then
+            Options.AdminPlayerSelect:SetValues(list)
+            Options.AdminPlayerSelect:SetValue(list[1])
+        end
+        Library:Notify("Player list refreshed", 3)
+    end})
+
+    -- ── Teleport actions ──
+    AdminRight:AddButton({Text="Teleport To Player", Func=function()
+        local name = Options.AdminPlayerSelect and Options.AdminPlayerSelect.Value
+        if not name or name == "(no other players)" then Library:Notify("No player selected", 3); return end
+        local target = getPlayerByName(name)
+        local root = getCharacterRoot(target)
+        local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+        if root and myRoot then
+            myRoot.CFrame = root.CFrame + Vector3.new(3, 0, 0)
+            Library:Notify("Teleported to "..name, 3)
+        else
+            Library:Notify("Could not find "..name.."'s character", 3)
+        end
+    end})
+
+    AdminRight:AddButton({Text="Teleport Player To Me", Func=function()
+        local name = Options.AdminPlayerSelect and Options.AdminPlayerSelect.Value
+        if not name or name == "(no other players)" then Library:Notify("No player selected", 3); return end
+        local target = getPlayerByName(name)
+        local theirRoot = getCharacterRoot(target)
+        local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+        if theirRoot and myRoot then
+            theirRoot.CFrame = myRoot.CFrame + Vector3.new(3, 0, 0)
+            Library:Notify("Pulled "..name.." to you", 3)
+        else
+            Library:Notify("Could not move "..name, 3)
+        end
+    end})
+
+    AdminRight:AddButton({Text="Spectate Player", Func=function()
+        local name = Options.AdminPlayerSelect and Options.AdminPlayerSelect.Value
+        if not name or name == "(no other players)" then Library:Notify("No player selected", 3); return end
+        local target = getPlayerByName(name)
+        if not target or not target.Character then Library:Notify("No character found", 3); return end
+        local root = target.Character:FindFirstChild("HumanoidRootPart") or target.Character:FindFirstChildWhichIsA("BasePart")
+        if root then
+            AH.spectateTarget = root
+            Library:Notify("Spectating "..name, 3)
+        end
+    end})
+
+    AdminRight:AddButton({Text="Stop Spectating", Func=function()
+        AH.spectateTarget = nil
+        pcall(function() workspace.CurrentCamera.CameraType = Enum.CameraType.Custom end)
+        Library:Notify("Stopped spectating", 3)
+    end})
+
+    AdminRight:AddDivider()
+
+    -- ── Utility ──
+    AdminRight:AddButton({Text="Kill Selected Player", Func=function()
+        local name = Options.AdminPlayerSelect and Options.AdminPlayerSelect.Value
+        if not name or name == "(no other players)" then Library:Notify("No player selected", 3); return end
+        local target = getPlayerByName(name)
+        if target and target.Character then
+            local hum = target.Character:FindFirstChildOfClass("Humanoid")
+            if hum then hum.Health = 0; Library:Notify("Eliminated "..name, 3) end
+        else
+            Library:Notify("Could not find "..name, 3)
+        end
+    end})
+
+    AdminRight:AddButton({Text="Void Selected Player", Func=function()
+        local name = Options.AdminPlayerSelect and Options.AdminPlayerSelect.Value
+        if not name or name == "(no other players)" then Library:Notify("No player selected", 3); return end
+        local target = getPlayerByName(name)
+        local root = getCharacterRoot(target)
+        if root then
+            root.CFrame = CFrame.new(0, -5000, 0)
+            Library:Notify("Voided "..name, 3)
+        else
+            Library:Notify("Could not find "..name, 3)
+        end
+    end})
+
+    AdminRight:AddButton({Text="Freeze Selected Player", Func=function()
+        local name = Options.AdminPlayerSelect and Options.AdminPlayerSelect.Value
+        if not name or name == "(no other players)" then Library:Notify("No player selected", 3); return end
+        local target = getPlayerByName(name)
+        if target and target.Character then
+            local hum = target.Character:FindFirstChildOfClass("Humanoid")
+            if hum then hum.WalkSpeed = 0; hum.JumpPower = 0; Library:Notify("Frozen "..name, 3) end
+        else
+            Library:Notify("Could not find "..name, 3)
+        end
+    end})
+
+    AdminRight:AddButton({Text="Unfreeze Selected Player", Func=function()
+        local name = Options.AdminPlayerSelect and Options.AdminPlayerSelect.Value
+        if not name or name == "(no other players)" then Library:Notify("No player selected", 3); return end
+        local target = getPlayerByName(name)
+        if target and target.Character then
+            local hum = target.Character:FindFirstChildOfClass("Humanoid")
+            if hum then hum.WalkSpeed = 16; hum.JumpPower = 50; Library:Notify("Unfrozen "..name, 3) end
+        else
+            Library:Notify("Could not find "..name, 3)
+        end
+    end})
+end)
 
 Library:Notify("Lustra loaded!", 4)
