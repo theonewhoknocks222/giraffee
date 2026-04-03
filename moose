@@ -23,9 +23,9 @@ local Tabs = {
     Main     = Window:AddTab("Main",            "star"),
     ESP      = Window:AddTab("ESP",             "eye"),
     Removal  = Window:AddTab("Remove Entities", "trash"),
-    Gameplay = Window:AddTab("Gameplay",        "zap"),
-    Admin    = Window:AddTab("Admin",           "shield"),
-    UI       = Window:AddTab("UI",              "settings"),
+    Gameplay  = Window:AddTab("Gameplay",        "zap"),
+    PreRound  = Window:AddTab("Pre-Round Shop", "shopping-cart"),
+    UI        = Window:AddTab("UI",              "settings"),
 }
 
 --// Name Maps
@@ -1738,12 +1738,52 @@ end})
 -- Remove Carnation
 AntiModBox:AddToggle("RemoveCarnation", {Text="Remove Carnation", Default=false, Callback=function(v)
     if v then
-        startEntityCheckLoop("RemoveCarnation", function(i)
-            local n = i.Name:lower()
-            return n == "carnation" or n:find("^carnation")
-        end, workspace)
+        -- Carnation is a Model — watch workspace.ChildAdded for the model directly,
+        -- and also scan existing children. DescendantAdded fires for Parts inside the model
+        -- before the model itself in some cases, so we check both the instance and its parent.
+        local function killCarnation(inst)
+            if not inst or not inst.Parent then return end
+            local function isCarnation(obj)
+                local n = obj.Name:lower()
+                return n == "carnation" or n:find("^carnation")
+            end
+            if isCarnation(inst) then
+                pcall(function() inst:Destroy() end)
+            elseif inst.Parent and isCarnation(inst.Parent) then
+                pcall(function() inst.Parent:Destroy() end)
+            end
+        end
+        -- Initial sweep
+        for _, child in ipairs(workspace:GetChildren()) do killCarnation(child) end
+        -- Watch for Carnation model being added to workspace
+        trackConnection("RemoveCarnation_added", workspace.ChildAdded:Connect(function(child)
+            task.wait()
+            killCarnation(child)
+        end))
+        -- Also watch descendants in case it spawns nested
+        trackConnection("RemoveCarnation_desc", workspace.DescendantAdded:Connect(function(inst)
+            task.wait()
+            if inst and inst.Parent and inst.Parent ~= workspace then
+                local n = inst.Parent.Name:lower()
+                if n == "carnation" or n:find("^carnation") then
+                    pcall(function() inst.Parent:Destroy() end)
+                end
+            end
+        end))
+        EntityLoopFlags["RemoveCarnation"] = true
+        task.spawn(function()
+            while EntityLoopFlags["RemoveCarnation"] do
+                task.wait(2)
+                if not EntityLoopFlags["RemoveCarnation"] then break end
+                for _, child in ipairs(workspace:GetChildren()) do
+                    pcall(function() killCarnation(child) end)
+                end
+            end
+        end)
     else
-        stopEntityCheckLoop("RemoveCarnation")
+        EntityLoopFlags["RemoveCarnation"] = false
+        removeConnection("RemoveCarnation_added")
+        removeConnection("RemoveCarnation_desc")
     end
 end})
 
@@ -1768,6 +1808,7 @@ PlayerBox:AddToggle("InfiniteStamina",{Text="Infinite Stamina",Default=false,Cal
     end)) else removeConnection("InfiniteStamina") end
 end})
 
+-- Speed (metatable bypass)
 -- Speed (metatable bypass)
 local mt = getrawmetatable(game); setreadonly(mt,false)
 local oldIndex = mt.__index
@@ -2070,164 +2111,145 @@ ThemeManager:ApplyToTab(Tabs.UI)
 -- Auto-load whichever config was marked for autoload
 SaveManager:LoadAutoloadConfig()
 
---// ─── ADMIN TAB ───
--- Gated by adminWhitelist in whitelist.json on GitHub.
--- Only user IDs listed under "adminWhitelist" get access.
-task.spawn(function()
-    local WHITELIST_URL = "https://raw.githubusercontent.com/RadiantSkullz/test/refs/heads/main/whitelist.json"
-    local isAdmin = false
+--// ─── PRE-ROUND SHOP TAB ───
+local PRS_Left  = Tabs.PreRound:AddLeftGroupbox("Purchase")
+local PRS_Right = Tabs.PreRound:AddRightGroupbox("Item Select")
 
-    pcall(function()
-        local raw = game:HttpGet(WHITELIST_URL)
-        local data = game:GetService("HttpService"):JSONDecode(raw)
-        for _, id in ipairs(data.adminWhitelist or {}) do
-            if id == LP.UserId then isAdmin = true; break end
+PRS_Right:AddLabel("Only usable in the submarine\nwhile the shop is shown.", true)
+
+-- Dynamically read items from ReplicatedStorage.PreRoundShop
+-- Returns {name -> IntValue} for all direct IntValue children
+local function getPRSItems()
+    local items = {}
+    local prs = game:GetService("ReplicatedStorage"):FindFirstChild("PreRoundShop")
+    if not prs then return items end
+    for _, child in ipairs(prs:GetChildren()) do
+        if child:IsA("IntValue") then
+            items[child.Name] = child
         end
-    end)
+    end
+    return items
+end
 
-    local AdminLeft  = Tabs.Admin:AddLeftGroupbox("Players")
-    local AdminRight = Tabs.Admin:AddRightGroupbox("Actions")
+local function getPRSNames()
+    local names = {}
+    for name in pairs(getPRSItems()) do
+        -- Skip any battery-named items from the shop itself — we add Batteries manually
+        if not name:lower():find("battery") then
+            names[#names+1] = name
+        end
+    end
+    table.sort(names)
+    -- Always add Batteries as a manual entry since it's always purchasable
+    names[#names+1] = "Batteries"
+    if #names == 1 then table.insert(names, 1, "(shop not available)") end
+    return names
+end
 
-    if not isAdmin then
-        AdminLeft:AddLabel("You do not have admin access.", true)
+-- Right box: item selector dropdown + confirm button
+PRS_Right:AddDropdown("PRSItemSelect", {
+    Values = getPRSNames(),
+    Default = 1,
+    Multi = true,
+    Text = "Select Items",
+    Callback = function(_) end,
+})
+
+-- Sliders and cost label — rebuilt each time Confirm is pressed
+local _prsSliders = {}       -- name -> slider option object
+local _prsSelection = {}     -- ordered list of selected item names
+local _prsCostLabel = nil
+
+local function rebuildPRSLeft()
+    -- Clear existing sliders and label
+    -- The library doesn't support removing elements so we track and hide them
+    for _, s in pairs(_prsSliders) do
+        pcall(function() s:SetValue(1) end)
+    end
+    _prsSliders = {}
+    _prsSelection = {}
+
+    local selected = Options.PRSItemSelect and Options.PRSItemSelect.Value or {}
+    local items = getPRSItems()
+    local hasBattery = false
+
+    for name, isOn in pairs(selected) do
+        if isOn and name ~= "(shop not available)" then
+            if name == "Batteries" or name:lower():find("battery") then
+                hasBattery = true
+            end
+            _prsSelection[#_prsSelection+1] = name
+        end
+    end
+    table.sort(_prsSelection)
+
+    -- Add a slider for each selected item
+    for _, name in ipairs(_prsSelection) do
+        local isBat = name == "Batteries" or name:lower():find("battery")
+        local maxAmt = isBat and 5 or 3
+        local sliderId = "PRSSlider_"..name
+        PRS_Left:AddSlider(sliderId, {
+            Text = "Amount: "..name,
+            Default = 1, Min = 1, Max = maxAmt, Rounding = 0,
+            Callback = function(_) end,
+        })
+        _prsSliders[name] = Options[sliderId]
+    end
+
+    -- Cost label
+    if not _prsCostLabel then
+        _prsCostLabel = PRS_Left:AddLabel("Total cost: —", true)
+    end
+end
+
+PRS_Right:AddButton({Text="Confirm Selection", Func=function()
+    rebuildPRSLeft()
+    Library:Notify("Selection confirmed. Set amounts then Buy.", 4)
+end})
+
+-- Left box: cost display + buy button
+PRS_Left:AddButton({Text="Calculate Cost", Func=function()
+    local items = getPRSItems()
+    local total = 0
+    for name, slider in pairs(_prsSliders) do
+        local item = items[name]
+        local amt = slider and slider.Value or 1
+        if item then total = total + (item.Value * amt) end
+    end
+    if _prsCostLabel then
+        pcall(function() _prsCostLabel:SetText("Total cost: "..tostring(total).." Kroner") end)
+    end
+    Library:Notify("Total cost: "..tostring(total).." Kroner", 4)
+end})
+
+PRS_Left:AddButton({Text="Buy Items", Func=function()
+    local items = getPRSItems()
+    if #_prsSelection == 0 then
+        Library:Notify("No items selected. Press Confirm Selection first.", 4)
         return
     end
 
-    -- ── Player list helpers ──
-    local function getPlayerList()
-        local names = {}
-        for _, p in ipairs(game:GetService("Players"):GetPlayers()) do
-            if p ~= LP then names[#names+1] = p.Name end
+    -- Build Items table (non-battery) and Batteries count separately
+    local itemsTable = {}
+    local batteriesCount = 0
+
+    for name, slider in pairs(_prsSliders) do
+        local amt = slider and slider.Value or 1
+        if name == "Batteries" or name:lower():find("battery") then
+            batteriesCount = batteriesCount + amt
+        else
+            itemsTable[name] = amt
         end
-        if #names == 0 then names[1] = "(no other players)" end
-        return names
     end
 
-    local function getPlayerByName(name)
-        return game:GetService("Players"):FindFirstChild(name)
-    end
+    pcall(function()
+        game:GetService("ReplicatedStorage"):WaitForChild("Events"):WaitForChild("PreRoundShop"):FireServer({
+            Items = itemsTable,
+            Batteries = batteriesCount,
+        })
+    end)
 
-    local function getCharacterRoot(player)
-        local char = player and player.Character
-        return char and char:FindFirstChild("HumanoidRootPart")
-    end
-
-    -- ── Player dropdown ──
-    AdminLeft:AddDropdown("AdminPlayerSelect", {
-        Values = getPlayerList(),
-        Default = 1,
-        Multi = false,
-        Text = "Select Player",
-        Callback = function(_) end,
-    })
-
-    AdminLeft:AddButton({Text="Refresh Players", Func=function()
-        local list = getPlayerList()
-        if Options.AdminPlayerSelect then
-            Options.AdminPlayerSelect:SetValues(list)
-            Options.AdminPlayerSelect:SetValue(list[1])
-        end
-        Library:Notify("Player list refreshed", 3)
-    end})
-
-    -- ── Teleport actions ──
-    AdminRight:AddButton({Text="Teleport To Player", Func=function()
-        local name = Options.AdminPlayerSelect and Options.AdminPlayerSelect.Value
-        if not name or name == "(no other players)" then Library:Notify("No player selected", 3); return end
-        local target = getPlayerByName(name)
-        local root = getCharacterRoot(target)
-        local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-        if root and myRoot then
-            myRoot.CFrame = root.CFrame + Vector3.new(3, 0, 0)
-            Library:Notify("Teleported to "..name, 3)
-        else
-            Library:Notify("Could not find "..name.."'s character", 3)
-        end
-    end})
-
-    AdminRight:AddButton({Text="Teleport Player To Me", Func=function()
-        local name = Options.AdminPlayerSelect and Options.AdminPlayerSelect.Value
-        if not name or name == "(no other players)" then Library:Notify("No player selected", 3); return end
-        local target = getPlayerByName(name)
-        local theirRoot = getCharacterRoot(target)
-        local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-        if theirRoot and myRoot then
-            theirRoot.CFrame = myRoot.CFrame + Vector3.new(3, 0, 0)
-            Library:Notify("Pulled "..name.." to you", 3)
-        else
-            Library:Notify("Could not move "..name, 3)
-        end
-    end})
-
-    AdminRight:AddButton({Text="Spectate Player", Func=function()
-        local name = Options.AdminPlayerSelect and Options.AdminPlayerSelect.Value
-        if not name or name == "(no other players)" then Library:Notify("No player selected", 3); return end
-        local target = getPlayerByName(name)
-        if not target or not target.Character then Library:Notify("No character found", 3); return end
-        local root = target.Character:FindFirstChild("HumanoidRootPart") or target.Character:FindFirstChildWhichIsA("BasePart")
-        if root then
-            AH.spectateTarget = root
-            Library:Notify("Spectating "..name, 3)
-        end
-    end})
-
-    AdminRight:AddButton({Text="Stop Spectating", Func=function()
-        AH.spectateTarget = nil
-        pcall(function() workspace.CurrentCamera.CameraType = Enum.CameraType.Custom end)
-        Library:Notify("Stopped spectating", 3)
-    end})
-
-    AdminRight:AddDivider()
-
-    -- ── Utility ──
-    AdminRight:AddButton({Text="Kill Selected Player", Func=function()
-        local name = Options.AdminPlayerSelect and Options.AdminPlayerSelect.Value
-        if not name or name == "(no other players)" then Library:Notify("No player selected", 3); return end
-        local target = getPlayerByName(name)
-        if target and target.Character then
-            local hum = target.Character:FindFirstChildOfClass("Humanoid")
-            if hum then hum.Health = 0; Library:Notify("Eliminated "..name, 3) end
-        else
-            Library:Notify("Could not find "..name, 3)
-        end
-    end})
-
-    AdminRight:AddButton({Text="Void Selected Player", Func=function()
-        local name = Options.AdminPlayerSelect and Options.AdminPlayerSelect.Value
-        if not name or name == "(no other players)" then Library:Notify("No player selected", 3); return end
-        local target = getPlayerByName(name)
-        local root = getCharacterRoot(target)
-        if root then
-            root.CFrame = CFrame.new(0, -5000, 0)
-            Library:Notify("Voided "..name, 3)
-        else
-            Library:Notify("Could not find "..name, 3)
-        end
-    end})
-
-    AdminRight:AddButton({Text="Freeze Selected Player", Func=function()
-        local name = Options.AdminPlayerSelect and Options.AdminPlayerSelect.Value
-        if not name or name == "(no other players)" then Library:Notify("No player selected", 3); return end
-        local target = getPlayerByName(name)
-        if target and target.Character then
-            local hum = target.Character:FindFirstChildOfClass("Humanoid")
-            if hum then hum.WalkSpeed = 0; hum.JumpPower = 0; Library:Notify("Frozen "..name, 3) end
-        else
-            Library:Notify("Could not find "..name, 3)
-        end
-    end})
-
-    AdminRight:AddButton({Text="Unfreeze Selected Player", Func=function()
-        local name = Options.AdminPlayerSelect and Options.AdminPlayerSelect.Value
-        if not name or name == "(no other players)" then Library:Notify("No player selected", 3); return end
-        local target = getPlayerByName(name)
-        if target and target.Character then
-            local hum = target.Character:FindFirstChildOfClass("Humanoid")
-            if hum then hum.WalkSpeed = 16; hum.JumpPower = 50; Library:Notify("Unfrozen "..name, 3) end
-        else
-            Library:Notify("Could not find "..name, 3)
-        end
-    end})
-end)
+    Library:Notify("Purchase sent!", 4)
+end})
 
 Library:Notify("Lustra loaded!", 4)
