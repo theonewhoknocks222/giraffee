@@ -21,6 +21,7 @@ local function removeConnection(n) if Connections[n] then Connections[n]:Disconn
 
 local Tabs = {
     Main     = Window:AddTab("Main",            "star"),
+    Lobby     = Window:AddTab("Lobby",           "house"),    
     ESP      = Window:AddTab("ESP",             "eye"),
     Removal  = Window:AddTab("Remove Entities", "trash"),
     Gameplay  = Window:AddTab("Gameplay",        "zap"),
@@ -792,8 +793,8 @@ else
 end
 Library.OnUnload(function() _noDamageClosed=true; _noDamageEnabled=false; _noDamageChanged:Fire() end)
 
---// ─── LOBBY ONLY GROUPBOX (whitelist-gated) ───
-local LobbyBox = Tabs.Main:AddRightGroupbox("LOBBY ONLY")
+--// ─── LOBBY TAB ───
+local LobbyBox = Tabs.Lobby:AddLeftGroupbox("Whitelist Only")
 
 task.spawn(function()
     -- Fetch whitelist from GitHub. To update access: edit whitelist.json in your repo.
@@ -901,6 +902,81 @@ task.spawn(function()
         Library:Notify("Lobby: "..table.concat(modNames, ", ").." x"..count.." ("..size.." slots, ".._lobbyAccess..")", 6)
     end})
 end)
+
+--// ─── HOST MANAGER GROUPBOX ───
+local HostBox = Tabs.Lobby:AddRightGroupbox("Host Manager")
+
+-- Map sizes per gamemode
+local _hostGamemodes = {"Blacksite","Raveyard","Endless","Hunted","Vault","Heartburn"}
+local _hostMaxSize = {
+    Blacksite=9, Raveyard=9, Endless=9,
+    Hunted=3, Vault=2, Heartburn=9,
+}
+local _hostAccess = "Public"
+local _hostSizeSlider = nil
+local _hostSizeFrame = nil  -- to hide/show when gamemode changes
+
+HostBox:AddLabel("Creates a regular run (no modifiers).\nUse in the lobby.", true)
+
+HostBox:AddDropdown("HostGamemodeSelect", {
+    Values = _hostGamemodes,
+    Default = 1,
+    Multi = false,
+    Text = "Gamemode",
+    Callback = function(_) end,
+})
+
+HostBox:AddButton({Text="Confirm Gamemode", Func=function()
+    local gm = Options.HostGamemodeSelect and Options.HostGamemodeSelect.Value or "Blacksite"
+    local maxSize = _hostMaxSize[gm] or 9
+
+    -- Hide old slider frame if present
+    if _hostSizeFrame then
+        pcall(function() _hostSizeFrame.Visible = false end)
+        _hostSizeFrame = nil
+        _hostSizeSlider = nil
+    end
+
+    -- Create new slider with correct max for this gamemode
+    HostBox:AddSlider("HostSizeSlider", {
+        Text = "Lobby Size (1-"..maxSize..")",
+        Default = 1, Min = 1, Max = maxSize, Rounding = 0,
+        Visible = true,
+        Callback = function(_) end,
+    })
+    _hostSizeSlider = Options.HostSizeSlider
+    pcall(function()
+        local sliderObj = Options.HostSizeSlider
+        local gui = sliderObj and (sliderObj.Main or sliderObj.Frame or sliderObj.Object)
+        if gui then _hostSizeFrame = gui end
+    end)
+
+    Library:Notify("Gamemode set to "..gm.." (max size: "..maxSize..")", 3)
+end})
+
+HostBox:AddButton({Text="Access: Public", Func=function()
+    _hostAccess = "Public"
+    Library:Notify("Access: Public", 3)
+end})
+
+HostBox:AddButton({Text="Access: Friends", Func=function()
+    _hostAccess = "Friends"
+    Library:Notify("Access: Friends", 3)
+end})
+
+HostBox:AddButton({Text="Start Lobby", Func=function()
+    local gm = Options.HostGamemodeSelect and Options.HostGamemodeSelect.Value or "Blacksite"
+    local size = _hostSizeSlider and _hostSizeSlider.Value or 1
+    pcall(function()
+        game:GetService("ReplicatedStorage"):WaitForChild("Events"):WaitForChild("CreateLobby"):InvokeServer({
+            LobbyAccess = _hostAccess,
+            LobbySize = size,
+            Gamemode = gm,
+            Modifiers = {},
+        })
+    end)
+    Library:Notify("Creating "..gm.." lobby ("..size.." slots, ".._hostAccess..")", 4)
+end})
 
 --// ─── ESP TAB ───
 local EntityESPBox   = Tabs.ESP:AddLeftGroupbox("Entity Detection")
@@ -2160,30 +2236,29 @@ local _prsSliders = {}       -- name -> slider option object
 local _prsSelection = {}     -- ordered list of selected item names
 local _prsCostLabel = nil
 
+-- Track slider GUI frames so we can hide them when selection changes
+local _prsSliderFrames = {}  -- name -> the actual Roblox Frame instance
+
 local function rebuildPRSLeft()
-    -- Clear existing sliders and label
-    -- The library doesn't support removing elements so we track and hide them
-    for _, s in pairs(_prsSliders) do
-        pcall(function() s:SetValue(1) end)
+    -- Hide all previously created slider frames
+    for _, frame in pairs(_prsSliderFrames) do
+        pcall(function() frame.Visible = false end)
     end
+    _prsSliderFrames = {}
     _prsSliders = {}
     _prsSelection = {}
 
     local selected = Options.PRSItemSelect and Options.PRSItemSelect.Value or {}
     local items = getPRSItems()
-    local hasBattery = false
 
     for name, isOn in pairs(selected) do
         if isOn and name ~= "(shop not available)" then
-            if name == "Batteries" or name:lower():find("battery") then
-                hasBattery = true
-            end
             _prsSelection[#_prsSelection+1] = name
         end
     end
     table.sort(_prsSelection)
 
-    -- Add a slider for each selected item
+    -- Add a slider for each selected item, and record the GUI frame it creates
     for _, name in ipairs(_prsSelection) do
         local isBat = name == "Batteries" or name:lower():find("battery")
         local maxAmt = isBat and 5 or 3
@@ -2191,12 +2266,22 @@ local function rebuildPRSLeft()
         PRS_Left:AddSlider(sliderId, {
             Text = "Amount: "..name,
             Default = 1, Min = 1, Max = maxAmt, Rounding = 0,
+            Visible = true,
             Callback = function(_) end,
         })
         _prsSliders[name] = Options[sliderId]
+        -- Find the slider's GUI element and store it so we can hide it later
+        if Options[sliderId] then
+            local sliderObj = Options[sliderId]
+            -- The library stores a reference to the GUI container in the option object
+            pcall(function()
+                local gui = sliderObj.Main or sliderObj.Frame or sliderObj.Object
+                if gui then _prsSliderFrames[name] = gui end
+            end)
+        end
     end
 
-    -- Cost label
+    -- Cost label (only created once)
     if not _prsCostLabel then
         _prsCostLabel = PRS_Left:AddLabel("Total cost: —", true)
     end
