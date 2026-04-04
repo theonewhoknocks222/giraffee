@@ -21,12 +21,12 @@ local function removeConnection(n) if Connections[n] then Connections[n]:Disconn
 
 local Tabs = {
     Main     = Window:AddTab("Main",            "star"),
-    Lobby     = Window:AddTab("Lobby",           "house"),    
+    Lobby    = Window:AddTab("Lobby",           "home"),
     ESP      = Window:AddTab("ESP",             "eye"),
     Removal  = Window:AddTab("Remove Entities", "trash"),
-    Gameplay  = Window:AddTab("Gameplay",        "zap"),
-    PreRound  = Window:AddTab("Pre-Round Shop", "shopping-cart"),
-    UI        = Window:AddTab("UI",              "settings"),
+    Gameplay = Window:AddTab("Gameplay",        "zap"),
+    PreRound = Window:AddTab("Pre-Round Shop",  "shopping-cart"),
+    UI       = Window:AddTab("UI",              "settings"),
 }
 
 --// Name Maps
@@ -231,18 +231,20 @@ end)
 
 -- Generic ESP toggle factory
 local function makeESPToggle(box, id, text, nameMap, color, parent, showHL)
-    parent = parent or workspace.GameplayFolder.Rooms
     box:AddToggle(id, {Text=text, Default=false, Callback=function(v)
+        -- Resolve parent lazily so it doesn't crash in lobby where GameplayFolder doesn't exist
+        local p = parent or (workspace:FindFirstChild("GameplayFolder") and workspace.GameplayFolder:FindFirstChild("Rooms"))
+        if not p then Library:Notify("GameplayFolder not loaded yet", 3); return end
         if v then
-            trackConnection(id, parent.DescendantAdded:Connect(function(inst)
+            trackConnection(id, p.DescendantAdded:Connect(function(inst)
                 if not shouldIgnoreInstance(inst) and nameMap[inst.Name] then createESP(inst, color, nameMap[inst.Name], showHL) end
             end))
-            for _, inst in ipairs(parent:GetDescendants()) do
+            for _, inst in ipairs(p:GetDescendants()) do
                 if not shouldIgnoreInstance(inst) and nameMap[inst.Name] then createESP(inst, color, nameMap[inst.Name], showHL) end
             end
         else
             removeConnection(id)
-            for _, inst in ipairs(parent:GetDescendants()) do if nameMap[inst.Name] then destroyESP(inst) end end
+            if p then for _, inst in ipairs(p:GetDescendants()) do if nameMap[inst.Name] then destroyESP(inst) end end end
         end
     end})
 end
@@ -762,6 +764,140 @@ BlatantBox:AddToggle("InstaKeycard",{Text="Insta Keycard",Default=false,Callback
 end})
 
 
+BlatantBox:AddToggle("InstaPassword", {
+    Text = "Insta Password",
+    Default = false,
+    Risky = true,
+    Callback = function(v)
+        if v then
+            local _passBusy = false
+            local _cachedRemote = nil
+            local _cachedMain = nil
+
+            local function log(...)
+                print("[InstaPassword]:", ...)
+            end
+
+            local function getCode()
+                local code = LP:GetAttribute("Code")
+                if code then
+                    local s = tostring(code)
+                    if s:match("^%d%d%d%d$") then
+                        return s
+                    end
+                end
+
+                for name, val in pairs(LP:GetAttributes()) do
+                    local s = tostring(val)
+                    if s:match("^%d%d%d%d$") then
+                        return s
+                    end
+                end
+
+                return nil
+            end
+
+            local function hasPasswordPaper()
+                local folder = LP:FindFirstChild("PlayerFolder")
+                if not folder then return false end
+                local inv = folder:FindFirstChild("Inventory")
+                if not inv then return false end
+                return inv:FindFirstChild("PasswordPaper") ~= nil
+            end
+
+            local function scanForDoor()
+                local char = LP.Character
+                if not char then return nil, nil end
+                local root = char:FindFirstChild("HumanoidRootPart")
+                if not root then return nil, nil end
+
+                local pos = root.Position
+                local closest, closestRemote, closestDist = nil, nil, math.huge
+
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    if obj:IsA("RemoteFunction")
+                        and obj.Name == "RemoteFunction"
+                        and obj.Parent
+                        and obj.Parent.Name == "Main"
+                        and obj.Parent.Parent
+                        and obj.Parent.Parent:FindFirstChild("Keypad0")
+                    then
+                        local anchorPart = obj.Parent.Parent:FindFirstChildWhichIsA("BasePart", true)
+                        if anchorPart then
+                            local dist = (pos - anchorPart.Position).Magnitude
+                            if dist < closestDist then
+                                closestDist = dist
+                                closest = obj.Parent.Parent
+                                closestRemote = obj
+                            end
+                        end
+                    end
+                end
+
+                return closest, closestRemote
+            end
+
+            -- Invalidate cache if workspace changes
+            local _descConn = workspace.DescendantRemoving:Connect(function(obj)
+                if obj == _cachedRemote or obj == _cachedMain then
+                    _cachedRemote = nil
+                    _cachedMain = nil
+                    log("Cached door removed, will re-scan")
+                end
+            end)
+
+            trackConnection("InstaPassword_desc", _descConn)
+
+            trackConnection("InstaPassword", RunService.Heartbeat:Connect(function()
+                if _passBusy then return end
+                if not hasPasswordPaper() then return end
+
+                local code = getCode()
+                if not code then return end
+
+                -- Use cache, only scan if invalid
+                if not _cachedRemote or not _cachedRemote.Parent then
+                    _cachedMain, _cachedRemote = scanForDoor()
+                end
+
+                if not _cachedMain or not _cachedRemote then return end
+
+                _passBusy = true
+                log("Attempting unlock with code:", code)
+
+                local success, result = pcall(function()
+                    return _cachedRemote:InvokeServer(code)
+                end)
+
+                if success then
+                    log("Full code sent, result:", tostring(result))
+                else
+                    log("Full code failed, trying per-digit...")
+                    for i = 1, #code do
+                        local digit = code:sub(i, i)
+                        pcall(function()
+                            _cachedRemote:InvokeServer(digit)
+                        end)
+                        log("Sent digit:", digit)
+                        task.wait(0.15)
+                    end
+                end
+
+                -- Invalidate after use so next door gets re-scanned
+                _cachedRemote = nil
+                _cachedMain = nil
+
+                task.wait(2)
+                _passBusy = false
+            end))
+
+        else
+            removeConnection("InstaPassword_desc")
+            removeConnection("InstaPassword")
+        end
+    end
+})
+
 local _noDamageDeleted = false
 if getfenv().getnilinstances then
     for _, v in ipairs(getfenv().getnilinstances()) do
@@ -946,9 +1082,10 @@ HostBox:AddButton({Text="Confirm Gamemode", Func=function()
     })
     _hostSizeSlider = Options.HostSizeSlider
     pcall(function()
-        local sliderObj = Options.HostSizeSlider
-        local gui = sliderObj and (sliderObj.Main or sliderObj.Frame or sliderObj.Object)
-        if gui then _hostSizeFrame = gui end
+        local sliderOpt = Options.HostSizeSlider
+        if not sliderOpt then return end
+        local gui = rawget(sliderOpt, "Object") or rawget(sliderOpt, "Frame") or rawget(sliderOpt, "Main")
+        if gui and gui:IsA("GuiObject") then _hostSizeFrame = gui end
     end)
 
     Library:Notify("Gamemode set to "..gm.." (max size: "..maxSize..")", 3)
@@ -1043,11 +1180,13 @@ EntityESPBox:AddToggle("EntityESP",{Text="Entity ESP",Default=false,Callback=fun
     end
 end})
 
-makeESPToggle(ItemESPBox,"KeyESP","Key ESP",KeyNames,Color3.new(1,1,0),workspace.GameplayFolder.Rooms,false)
-makeESPToggle(ItemESPBox,"BatteryESP","Battery ESP",BatteryNames,Color3.new(0,1,1),workspace.GameplayFolder.Rooms,false)
-makeESPToggle(ItemESPBox,"ItemESP","Item ESP",ItemNames,Color3.new(0,1,0),workspace.GameplayFolder.Rooms,false)
-makeESPToggle(ItemESPBox,"CurrencyESP","Currency ESP",CurrencyNames,Color3.new(1,0.84,0),workspace.GameplayFolder.Rooms,false)
-makeESPToggle(ItemESPBox,"AmmoESP","Ammo ESP",AmmoNames,Color3.new(1,0,1),workspace.GameplayFolder.Rooms,false)
+-- ESP toggles resolve GameplayFolder.Rooms lazily so they don't crash in lobby
+local function getRooms() return workspace:FindFirstChild("GameplayFolder") and workspace.GameplayFolder:FindFirstChild("Rooms") end
+makeESPToggle(ItemESPBox,"KeyESP","Key ESP",KeyNames,Color3.new(1,1,0),nil,false)
+makeESPToggle(ItemESPBox,"BatteryESP","Battery ESP",BatteryNames,Color3.new(0,1,1),nil,false)
+makeESPToggle(ItemESPBox,"ItemESP","Item ESP",ItemNames,Color3.new(0,1,0),nil,false)
+makeESPToggle(ItemESPBox,"CurrencyESP","Currency ESP",CurrencyNames,Color3.new(1,0.84,0),nil,false)
+makeESPToggle(ItemESPBox,"AmmoESP","Ammo ESP",AmmoNames,Color3.new(1,0,1),nil,false)
 
 -- Generator ESP
 ObjectESPBox:AddToggle("GeneratorESP",{Text="Generator ESP",Default=false,Callback=function(v)
@@ -2270,15 +2409,15 @@ local function rebuildPRSLeft()
             Callback = function(_) end,
         })
         _prsSliders[name] = Options[sliderId]
-        -- Find the slider's GUI element and store it so we can hide it later
-        if Options[sliderId] then
-            local sliderObj = Options[sliderId]
-            -- The library stores a reference to the GUI container in the option object
-            pcall(function()
-                local gui = sliderObj.Main or sliderObj.Frame or sliderObj.Object
-                if gui then _prsSliderFrames[name] = gui end
-            end)
-        end
+        -- Store the slider's container frame — Obsidian library stores it in .Object
+        pcall(function()
+            local sliderOpt = Options[sliderId]
+            if not sliderOpt then return end
+            local gui = rawget(sliderOpt, "Object") or rawget(sliderOpt, "Frame") or rawget(sliderOpt, "Main")
+            if gui and gui:IsA("GuiObject") then
+                _prsSliderFrames[name] = gui
+            end
+        end)
     end
 
     -- Cost label (only created once)
