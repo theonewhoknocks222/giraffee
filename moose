@@ -21,11 +21,12 @@ local function removeConnection(n) if Connections[n] then Connections[n]:Disconn
 
 local Tabs = {
     Main     = Window:AddTab("Main",            "star"),
-    Lobby    = Window:AddTab("Lobby",           "home"),
+    Lobby    = Window:AddTab("Lobby",           "house"),
     ESP      = Window:AddTab("ESP",             "eye"),
     Removal  = Window:AddTab("Remove Entities", "trash"),
     Gameplay = Window:AddTab("Gameplay",        "zap"),
     PreRound = Window:AddTab("Pre-Round Shop",  "shopping-cart"),
+    AutoPlay = Window:AddTab("Auto Play",        "play"),
     UI       = Window:AddTab("UI",              "settings"),
 }
 
@@ -233,8 +234,11 @@ end)
 local function makeESPToggle(box, id, text, nameMap, color, parent, showHL)
     box:AddToggle(id, {Text=text, Default=false, Callback=function(v)
         -- Resolve parent lazily so it doesn't crash in lobby where GameplayFolder doesn't exist
-        local p = parent or (workspace:FindFirstChild("GameplayFolder") and workspace.GameplayFolder:FindFirstChild("Rooms"))
+        local gf = workspace:FindFirstChild("GameplayFolder")
+        local p = parent or (gf and gf:FindFirstChild("Rooms"))
         if not p then Library:Notify("GameplayFolder not loaded yet", 3); return end
+        -- Also watch DroppedItems — items dropped in water end up here
+        local di = gf and gf:FindFirstChild("DroppedItems")
         if v then
             trackConnection(id, p.DescendantAdded:Connect(function(inst)
                 if not shouldIgnoreInstance(inst) and nameMap[inst.Name] then createESP(inst, color, nameMap[inst.Name], showHL) end
@@ -242,9 +246,19 @@ local function makeESPToggle(box, id, text, nameMap, color, parent, showHL)
             for _, inst in ipairs(p:GetDescendants()) do
                 if not shouldIgnoreInstance(inst) and nameMap[inst.Name] then createESP(inst, color, nameMap[inst.Name], showHL) end
             end
+            if di then
+                trackConnection(id.."_di", di.DescendantAdded:Connect(function(inst)
+                    if not shouldIgnoreInstance(inst) and nameMap[inst.Name] then createESP(inst, color, nameMap[inst.Name], showHL) end
+                end))
+                for _, inst in ipairs(di:GetDescendants()) do
+                    if not shouldIgnoreInstance(inst) and nameMap[inst.Name] then createESP(inst, color, nameMap[inst.Name], showHL) end
+                end
+            end
         else
             removeConnection(id)
+            removeConnection(id.."_di")
             if p then for _, inst in ipairs(p:GetDescendants()) do if nameMap[inst.Name] then destroyESP(inst) end end end
+            if di then for _, inst in ipairs(di:GetDescendants()) do if nameMap[inst.Name] then destroyESP(inst) end end end
         end
     end})
 end
@@ -661,9 +675,22 @@ local function makeAutoInteract(toggleId, nameMap, connName, stateRef, shopGuard
     AutoBox:AddToggle(toggleId,{Text="Auto Interact "..toggleId:gsub("AutoInteract",""),Default=false,Callback=function(v)
         stateRef[1]=v
         if v then
-            trackConnection(connName, workspace.GameplayFolder.Rooms.DescendantAdded:Connect(function(i) handle(i, stateRef) end))
-            for _, i in ipairs(workspace.GameplayFolder.Rooms:GetDescendants()) do handle(i, stateRef) end
-        else removeConnection(connName) end
+            local gf = workspace:FindFirstChild("GameplayFolder")
+            local rooms = gf and gf:FindFirstChild("Rooms")
+            local di = gf and gf:FindFirstChild("DroppedItems")
+            if rooms then
+                trackConnection(connName, rooms.DescendantAdded:Connect(function(i) handle(i, stateRef) end))
+                for _, i in ipairs(rooms:GetDescendants()) do handle(i, stateRef) end
+            end
+            -- Also watch DroppedItems for items in water
+            if di then
+                trackConnection(connName.."_di", di.DescendantAdded:Connect(function(i) handle(i, stateRef) end))
+                for _, i in ipairs(di:GetDescendants()) do handle(i, stateRef) end
+            end
+        else
+            removeConnection(connName)
+            removeConnection(connName.."_di")
+        end
     end})
 end
 
@@ -774,26 +801,16 @@ BlatantBox:AddToggle("InstaPassword", {
             local _cachedRemote = nil
             local _cachedMain = nil
 
-            local function log(...)
-                print("[InstaPassword]:", ...)
-            end
-
             local function getCode()
                 local code = LP:GetAttribute("Code")
                 if code then
                     local s = tostring(code)
-                    if s:match("^%d%d%d%d$") then
-                        return s
-                    end
+                    if s:match("^%d%d%d%d$") then return s end
                 end
-
                 for name, val in pairs(LP:GetAttributes()) do
                     local s = tostring(val)
-                    if s:match("^%d%d%d%d$") then
-                        return s
-                    end
+                    if s:match("^%d%d%d%d$") then return s end
                 end
-
                 return nil
             end
 
@@ -837,15 +854,13 @@ BlatantBox:AddToggle("InstaPassword", {
                 return closest, closestRemote
             end
 
-            -- Invalidate cache if workspace changes
+            -- Invalidate cache if the cached remote gets removed from workspace
             local _descConn = workspace.DescendantRemoving:Connect(function(obj)
                 if obj == _cachedRemote or obj == _cachedMain then
                     _cachedRemote = nil
                     _cachedMain = nil
-                    log("Cached door removed, will re-scan")
                 end
             end)
-
             trackConnection("InstaPassword_desc", _descConn)
 
             trackConnection("InstaPassword", RunService.Heartbeat:Connect(function()
@@ -863,22 +878,16 @@ BlatantBox:AddToggle("InstaPassword", {
                 if not _cachedMain or not _cachedRemote then return end
 
                 _passBusy = true
-                log("Attempting unlock with code:", code)
 
-                local success, result = pcall(function()
-                    return _cachedRemote:InvokeServer(code)
+                -- Try sending the full code first, fall back to per-digit if it fails
+                local success = pcall(function()
+                    _cachedRemote:InvokeServer(code)
                 end)
 
-                if success then
-                    log("Full code sent, result:", tostring(result))
-                else
-                    log("Full code failed, trying per-digit...")
+                if not success then
                     for i = 1, #code do
                         local digit = code:sub(i, i)
-                        pcall(function()
-                            _cachedRemote:InvokeServer(digit)
-                        end)
-                        log("Sent digit:", digit)
+                        pcall(function() _cachedRemote:InvokeServer(digit) end)
                         task.wait(0.15)
                     end
                 end
@@ -1288,6 +1297,8 @@ local removalDefs = {
     {box=RemoveBox2,id="RemoveChaseSteam",        text="Remove Chase Steam",          key="RemoveChaseSteam",    fn=function(i) return i.Name=="ChaseSteam" end,                                                                                                      parentTag="Rooms"},
     {box=RemoveBox2,id="RemoveChaseFanModel",     text="Remove Chase Fan Model",      key="RemoveChaseFanModel", fn=function(i) local f={ChaseFanModel1=true,ChaseFanModel2=true,ChaseFanModel3=true,ChaseFanModel4=true,ChaseFanModel5=true,ChaseFanModel6=true}; return f[i.Name] end, parentTag="Rooms"},
     {box=RemoveBox2,id="RemoveFish",              text="Remove Fish",                 key="RemoveFish",          fn=function(i) return i.Name=="FishBody" end,                                                                                                        parentTag="workspace"},
+    {box=RemoveBox2,id="RemoveVoidLockers",       text="Remove Void Lockers",         key="RemoveVoidLockers",   fn=function(i) return i.Name=="ProximityPrompt" and i.Parent and i.Parent.Name=="MonsterLocker" end, parentTag="Rooms"},
+    {box=RemoveBox2,id="RemoveDwellers",          text="Remove Dwellers",             key="RemoveDwellers",      fn=function(i) return i.Name=="WallDweller" or i.Name=="RottenWallDweller" end,                                                                           parentTag="workspace"},
     {box=RemoveBox2,id="RemoveAbomination",       text="Remove Abomination",          key="RemoveAbomination",   fn=function(i) return i.Name=="Abomination" end,                                                                                                     parentTag="workspace"},
     {box=RemoveBox2,id="RemovePipsqueak",         text="Remove Pipsqueak",            key="RemovePipsqueak",     fn=function(i) return i.Name=="Pipsqueak" end,                                                                                                       parentTag="workspace"},
     {box=RemoveBox2,id="RemoveBaldi",             text="Remove Baldi",                key="RemoveBaldi",         fn=function(i) return i.Name=="Baldi" end,                                                                                                           parentTag="workspace"},
@@ -2223,7 +2234,7 @@ MiscBox:AddButton({Text="Load Infinite Yield",Func=function()
     pcall(function() loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"))() end)
 end})
 
-MiscBox:AddToggle("AntiVoid",{Text="Anti Void",Default=false,Callback=function(v)
+MiscBox:AddToggle("AntiVoid",{Text="Anti Void (Safe Position)",Default=false,Callback=function(v)
     if v then
         local lastSafePos,lastSaveTime,recovering=nil,0,false
         local rp=RaycastParams.new(); rp.FilterType=Enum.RaycastFilterType.Exclude
@@ -2284,9 +2295,277 @@ end})
 -- Hot Potato forces the player to crouch. Fires CrouchEvent(true) on a loop
 -- to keep the crouch state satisfied so the penalty never applies.
 
+--// ─── SKIP GRAND ENCOUNTERS GROUPBOX ───
+local SkipBox = Tabs.Gameplay:AddLeftGroupbox("Skip Grand Encounters")
+
+-- Skip Firewall
+-- When FirewallEnd room exists, teleports player to the LargeRoundDoor exit (same as friend script)
+SkipBox:AddToggle("SkipFirewall", {Text="Skip Firewall", Default=false, Callback=function(v)
+    if v then
+        local _fwTeleported = false
+        trackConnection("SkipFirewall", RunService.Heartbeat:Connect(function()
+            if _fwTeleported then return end
+            pcall(function()
+                local rooms = workspace:FindFirstChild("GameplayFolder") and workspace.GameplayFolder:FindFirstChild("Rooms")
+                if not rooms then return end
+                local firewallEnd = rooms:FindFirstChild("FirewallEnd")
+                if not firewallEnd then return end
+                local door = firewallEnd.Entrances and firewallEnd.Entrances:FindFirstChild("LargeRoundDoor")
+                local model = door and door:FindFirstChild("Model")
+                if not model then return end
+                local char = LP.Character
+                if char and char:FindFirstChild("HumanoidRootPart") then
+                    char.HumanoidRootPart.CFrame = model:GetPivot()
+                    _fwTeleported = true
+                    Library:Notify("Firewall skipped!", 3)
+                end
+            end)
+        end))
+    else
+        removeConnection("SkipFirewall")
+    end
+end})
+
+-- Skip Abomination — loop that destroys DamageParts in ChaseEnd and TPs player to LargeRoundDoor
+SkipBox:AddToggle("SkipAbomination", {Text="Skip Abomination", Default=false, Callback=function(v)
+    if v then
+        trackConnection("SkipAbomination", RunService.Stepped:Connect(function()
+            pcall(function()
+                local rooms = workspace:FindFirstChild("GameplayFolder") and workspace.GameplayFolder:FindFirstChild("Rooms")
+                if not rooms then return end
+                -- Destroy Abomination entity if present
+                local abom = workspace:FindFirstChild("Abomination")
+                if abom then pcall(function() abom:Destroy() end) end
+                -- Destroy DamageParts in ChaseEnd
+                local chaseEnd = rooms:FindFirstChild("ChaseEnd")
+                if chaseEnd then
+                    local dp = chaseEnd:FindFirstChild("DamageParts")
+                    if dp then pcall(function() dp:Destroy() end) end
+                    -- TP player to the exit door
+                    local door = chaseEnd.Entrances and chaseEnd.Entrances:FindFirstChild("LargeRoundDoor")
+                    if door and LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
+                        LP.Character.HumanoidRootPart.CFrame = door.CFrame
+                    end
+                end
+            end)
+        end))
+    else
+        removeConnection("SkipAbomination")
+    end
+end})
+
 -- FIX #2: Same fix for ForceReturn keybind — use OnClick.
 Options.ForceReturnKeybind:OnClick(function() ahForceReturn() end)
 
+
+--// ─── AUTO PLAY TAB (Blacksite only) ───
+local APLeft  = Tabs.AutoPlay:AddLeftGroupbox("Auto Play")
+local APRight = Tabs.AutoPlay:AddRightGroupbox("Recommendations")
+
+-- Auto Play — rewritten from the working Hadal Blacksite script
+-- Uses TweenService with Completed:Wait() exactly as the source does,
+-- with a separate entity-hiding loop that sets `_apHiding` to pause movement.
+
+local _apTweenSpeed = 50
+local _apDelay = 0.5
+local _apTweenedDoors = {}
+local _apCollectedItems = {}
+local _apLoopThread = nil
+local _apHideThread = nil
+local _apBusy = false
+local _apHiding = false
+local _apActive = false
+local _apSafePart = nil
+local _apOriginCF = nil
+
+local function _apTweenTo(root, targetCFrame)
+    if not root or not root.Parent then return end
+    local distance = (root.Position - targetCFrame.Position).Magnitude
+    local tweenTime = distance / math.max(_apTweenSpeed, 1)
+    local info = TweenInfo.new(tweenTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local tween = game:GetService("TweenService"):Create(root, info, {CFrame = targetCFrame})
+    tween:Play()
+    tween.Completed:Wait()
+end
+
+local function _apGetKeycards(root)
+    local candidates = {}
+    pcall(function()
+        local rooms = workspace.GameplayFolder.Rooms
+        for _, child in pairs(rooms:GetDescendants()) do
+            if child:IsA("ProximityPrompt") and not _apCollectedItems[child] then
+                local proxyPart = child.Parent
+                if proxyPart and proxyPart.Parent then
+                    local p = proxyPart.Parent
+                    if p.Name == "NormalKeyCard" or p.Name == "PasswordPaper"
+                        or p.Name == "InnerKeyCard" or p.Name == "RidgeKeyCard" then
+                        local dist = (root.Position - proxyPart.Position).Magnitude
+                        if dist <= 5000 then
+                            table.insert(candidates, {prompt=child, proxyPart=proxyPart, dist=dist})
+                        end
+                    end
+                end
+            end
+        end
+    end)
+    return candidates
+end
+
+local function _apCheckEntities()
+    for name in pairs(AutoHideEntities) do
+        if workspace:FindFirstChild(name) then return true end
+    end
+    return false
+end
+
+APLeft:AddToggle("AutoPlayToggle", {Text="Enable Auto Play", Default=false, Risky=true, Callback=function(v)
+    _apActive = v
+
+    -- Stop any existing threads
+    if _apLoopThread then task.cancel(_apLoopThread); _apLoopThread = nil end
+    if _apHideThread then task.cancel(_apHideThread); _apHideThread = nil end
+
+    if v then
+        -- Disable main Auto Hide to avoid conflicts
+        if Toggles.AutoHide and Toggles.AutoHide.Value then
+            Toggles.AutoHide:SetValue(false)
+            Library:Notify("Auto Hide disabled — Auto Play handles hiding", 3)
+        end
+
+        _apTweenedDoors = {}; _apCollectedItems = {}
+        _apBusy = false; _apHiding = false
+
+        Library:Notify("Auto Play started — Blacksite only!", 4)
+
+        -- Entity hide loop — mirrors the source script's task.spawn hide block
+        _apHideThread = task.spawn(function()
+            while _apActive do
+                if _apCheckEntities() then
+                    if not _apHiding then
+                        _apHiding = true
+                        _apBusy = true
+                        pcall(function()
+                            local char = LP.Character
+                            local root = char and char:FindFirstChild("HumanoidRootPart")
+                            if not root then return end
+                            _apOriginCF = root.CFrame
+                            if not _apSafePart then
+                                _apSafePart = Instance.new("Part")
+                                _apSafePart.Size = Vector3.new(100,1,100)
+                                _apSafePart.Position = root.Position + Vector3.new(0, 404, 0)
+                                _apSafePart.Anchored = true; _apSafePart.CanCollide = true
+                                _apSafePart.Transparency = 0.5
+                                _apSafePart.Color = Color3.fromRGB(0,255,255)
+                                _apSafePart.Parent = workspace
+                            end
+                            root.CFrame = CFrame.new(_apSafePart.Position + Vector3.new(0,3,0))
+                        end)
+                    else
+                        -- Keep player pinned to safe part while hiding
+                        pcall(function()
+                            local char = LP.Character
+                            local root = char and char:FindFirstChild("HumanoidRootPart")
+                            if root and _apSafePart then
+                                root.CFrame = CFrame.new(_apSafePart.Position + Vector3.new(0,3,0))
+                            end
+                        end)
+                    end
+                else
+                    if _apHiding then
+                        -- Entity gone — return to origin
+                        pcall(function()
+                            local char = LP.Character
+                            local root = char and char:FindFirstChild("HumanoidRootPart")
+                            if root and _apOriginCF then root.CFrame = _apOriginCF end
+                            if _apSafePart then _apSafePart:Destroy(); _apSafePart = nil end
+                            _apOriginCF = nil
+                        end)
+                        _apHiding = false
+                        _apBusy = false
+                    end
+                end
+                task.wait(0.5)
+            end
+        end)
+
+        -- Main movement loop — mirrors source script exactly
+        _apLoopThread = task.spawn(function()
+            while _apActive do
+                if _apBusy or _apHiding or not LP.Character then
+                    task.wait(0.1)
+                    continue
+                end
+
+                local root = LP.Character:FindFirstChild("HumanoidRootPart")
+                if not root then task.wait(0.1); continue end
+
+                local keyCandidates = _apGetKeycards(root)
+                if #keyCandidates > 0 then
+                    table.sort(keyCandidates, function(a,b) return a.dist < b.dist end)
+                    local target = keyCandidates[1]
+                    _apBusy = true
+                    local targetPos = target.proxyPart.Position + Vector3.new(0, 3, 0)
+                    local targetCFrame = CFrame.lookAt(targetPos, target.proxyPart.Position)
+                    pcall(function() _apTweenTo(root, targetCFrame) end)
+                    if target.prompt and target.prompt:IsDescendantOf(workspace) then
+                        pcall(function() fireproximityprompt(target.prompt) end)
+                        _apCollectedItems[target.prompt] = true
+                    end
+                    task.wait(_apDelay)
+                    _apBusy = false
+                else
+                    local found = false
+                    pcall(function()
+                        local rooms = workspace.GameplayFolder.Rooms
+                        for _, room in pairs(rooms:GetChildren()) do
+                            local entrances = room:FindFirstChild("Entrances")
+                            if entrances then
+                                local door = entrances:FindFirstChild("NormalDoor")
+                                if door and door:IsA("Model") and door.PrimaryPart
+                                    and not _apTweenedDoors[door] then
+                                    _apBusy = true
+                                    pcall(function() _apTweenTo(root, door.PrimaryPart.CFrame) end)
+                                    _apTweenedDoors[door] = true
+                                    task.wait(_apDelay)
+                                    _apBusy = false
+                                    found = true
+                                    return
+                                end
+                            end
+                        end
+                    end)
+                    if not found then task.wait(0.5) end
+                end
+                task.wait(0.1)
+            end
+        end)
+
+    else
+        -- Cleanup on disable
+        _apBusy = false; _apHiding = false
+        if _apSafePart then _apSafePart:Destroy(); _apSafePart = nil end
+        pcall(function()
+            local char = LP.Character
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            if root and _apOriginCF then root.CFrame = _apOriginCF end
+        end)
+        _apOriginCF = nil
+        _apTweenedDoors = {}; _apCollectedItems = {}
+        Library:Notify("Auto Play stopped", 3)
+    end
+end})
+
+APLeft:AddSlider("AutoPlaySpeed", {
+    Text="Tween Speed (studs/s)", Default=50, Min=10, Max=300, Rounding=0,
+    Callback=function(v) _apTweenSpeed = v end
+})
+
+APLeft:AddSlider("AutoPlayDelay", {
+    Text="Action Delay (s)", Default=0.5, Min=0, Max=3, Rounding=1,
+    Callback=function(v) _apDelay = v end
+})
+
+APRight:AddLabel("⚠️ Very buggy, does not work constantly, breaks on certain rooms, very unreliable. We will have to leave it like this for now — it is a fix for another time.", true)
 
 --// ─── UI TAB ───
 local MenuGroup = Tabs.UI:AddLeftGroupbox("Customize")
